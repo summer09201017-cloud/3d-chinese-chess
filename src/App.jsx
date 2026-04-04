@@ -232,13 +232,13 @@ function App() {
           </label>
         </div>
         <div className="buttons">
+          <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
           <button onClick={restartGame} style={{ background: '#FF5722' }}>重新開局 (Restart)</button>
           <button onClick={undo}>悔棋 (Undo)</button>
           <button onClick={saveGame}>存檔 (Save)</button>
           <button onClick={loadGame}>讀檔 (Load)</button>
           <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
           <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
-          <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
         </div>
       </div>
 
