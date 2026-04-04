@@ -93,38 +93,53 @@ h1 {
 /* Mobile Responsive UI Override */
 @media (max-width: 768px) {
   .ui-overlay {
-    top: 5px;
-    left: 5px;
-    right: 5px;
-    max-width: none;
-    padding: 10px;
+    top: 0;
+    left: 0;
+    right: 0;
+    max-width: 100%;
+    padding: 5px 10px;
+    border-radius: 0 0 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .ui-overlay h1 {
-    font-size: 18px;
-    margin-bottom: 5px;
-    text-align: center;
+    display: none;
   }
 
   .controls {
     display: flex;
     gap: 5px;
-    margin-bottom: 10px;
+    margin: 0;
+    width: 100%;
   }
 
   .controls label {
     flex: 1;
     margin: 0 !important;
+    font-size: 10px;
+  }
+
+  .controls select {
+    font-size: 10px;
+    padding: 2px;
+    margin-left: 0;
+    width: 100%;
   }
 
   .buttons {
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 4px;
+    width: 100%;
   }
 
   .buttons button {
-    flex: 1 1 calc(33% - 10px);
-    font-size: 12px;
-    padding: 6px;
+    flex: 1 1 calc(25% - 4px);
+    font-size: 10px;
+    padding: 6px 2px;
+    margin: 0;
   }
 }
