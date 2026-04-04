@@ -26,6 +26,7 @@ function App() {
   const [playerColor, setPlayerColor] = useState('w');
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [is2D, setIs2D] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   const controlsRef = useRef();
 
   useEffect(() => {
@@ -203,43 +204,50 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="ui-overlay glass">
-        <h1>3D 象棋</h1>
-        <div className="controls">
-          <label>難度 (Difficulty):
-            <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>
-              <option value={1}>1 - 新手 (Beginner)</option>
-              <option value={2}>2 - 入門 (Novice)</option>
-              <option value={3}>3 - 簡單 (Easy)</option>
-              <option value={4}>4 - 業餘 (Amateur)</option>
-              <option value={5}>5 - 普通 (Normal)</option>
-              <option value={6}>6 - 困難 (Hard)</option>
-              <option value={7}>7 - 專家 (Expert)</option>
-              <option value={8}>8 - 大師 (Master)</option>
-              <option value={9}>9 - 宗師 (Grandmaster)</option>
-              <option value={10}>10 - 棋聖 (Legendary)</option>
-            </select>
-          </label>
-          <label style={{ display: 'block', marginTop: '10px' }}>AI 棋譜 (Opening):
-            <select value={openingStyle} onChange={(e) => setOpeningStyle(e.target.value)} style={{ marginTop: '5px', display: 'block', width: '100%' }}>
-              <option value="auto">全譜庫 (Auto)</option>
-              <option value="cannon">中炮局 (Central Cannon)</option>
-              <option value="elephant">飛相局 (Elephant)</option>
-              <option value="screen_horse">起馬 (Knight)</option>
-              <option value="pawn">仙人指路 (Pawn)</option>
-              <option value="none">純搜尋 (Pure Search)</option>
-            </select>
-          </label>
-        </div>
-        <div className="buttons">
-          <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
-          <button onClick={restartGame} style={{ background: '#FF5722' }}>重新開局 (Restart)</button>
-          <button onClick={undo}>悔棋 (Undo)</button>
-          <button onClick={saveGame}>存檔 (Save)</button>
-          <button onClick={loadGame}>讀檔 (Load)</button>
-          <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
-          <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
-        </div>
+      <div className={`ui-overlay glass ${panelOpen ? '' : 'panel-collapsed'}`}>
+        <button className="panel-toggle" onClick={() => setPanelOpen(!panelOpen)}>
+          {panelOpen ? '▲ 收起' : '▼ 展開'}
+        </button>
+        {panelOpen && (
+          <>
+            <h1>3D 象棋</h1>
+            <div className="controls">
+              <label>難度 (Difficulty):
+                <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>
+                  <option value={1}>1 - 新手 (Beginner)</option>
+                  <option value={2}>2 - 入門 (Novice)</option>
+                  <option value={3}>3 - 簡單 (Easy)</option>
+                  <option value={4}>4 - 業餘 (Amateur)</option>
+                  <option value={5}>5 - 普通 (Normal)</option>
+                  <option value={6}>6 - 困難 (Hard)</option>
+                  <option value={7}>7 - 專家 (Expert)</option>
+                  <option value={8}>8 - 大師 (Master)</option>
+                  <option value={9}>9 - 宗師 (Grandmaster)</option>
+                  <option value={10}>10 - 棋聖 (Legendary)</option>
+                </select>
+              </label>
+              <label style={{ display: 'block', marginTop: '10px' }}>AI 棋譜 (Opening):
+                <select value={openingStyle} onChange={(e) => setOpeningStyle(e.target.value)} style={{ marginTop: '5px', display: 'block', width: '100%' }}>
+                  <option value="auto">全譜庫 (Auto)</option>
+                  <option value="cannon">中炮局 (Central Cannon)</option>
+                  <option value="elephant">飛相局 (Elephant)</option>
+                  <option value="screen_horse">起馬 (Knight)</option>
+                  <option value="pawn">仙人指路 (Pawn)</option>
+                  <option value="none">純搜尋 (Pure Search)</option>
+                </select>
+              </label>
+            </div>
+            <div className="buttons">
+              <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
+              <button onClick={restartGame} style={{ background: '#FF5722' }}>重新開局 (Restart)</button>
+              <button onClick={undo}>悔棋 (Undo)</button>
+              <button onClick={saveGame}>存檔 (Save)</button>
+              <button onClick={loadGame}>讀檔 (Load)</button>
+              <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
+              <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
+            </div>
+          </>
+        )}
       </div>
 
       <Canvas shadows camera={{ position: [0, 8, 8], fov: 45 }}>
