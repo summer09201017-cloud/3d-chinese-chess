@@ -27,7 +27,14 @@ function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [is2D, setIs2D] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const controlsRef = useRef();
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (controlsRef.current) {
@@ -250,7 +257,7 @@ function App() {
         )}
       </div>
 
-      <Canvas shadows camera={{ position: [0, 8, 8], fov: 45 }}>
+      <Canvas shadows camera={{ position: [0, 8, 8], fov: isMobile ? 55 : 45 }}>
         <color attach="background" args={['#2c3e50']} />
         <ambientLight intensity={0.5} />
         <directionalLight
@@ -259,7 +266,7 @@ function App() {
           intensity={1.5}
           shadow-mapSize={1024}
         />
-        <group scale={[1.2, 1.2, 1.2]}>
+        <group scale={isMobile ? [1.0, 1.0, 1.0] : [1.2, 1.2, 1.2]}>
           <Board onBoardClick={handleBoardClick} />
           {boardState.map((row, y) =>
             row.map((p, x) => {
