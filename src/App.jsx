@@ -6,6 +6,23 @@ import { getBestMoveAlphaBeta } from './game/ai';
 import { Board } from './components/Board';
 import { Piece } from './components/Piece';
 
+/* 💡 提示的標記:紫色。
+   綠色已經是「這格我可以走」(ValidMoveIndicator)、選中的棋子也有自己的樣子 ——
+   撞色的話提示跟合法目標在畫面上分不出來,提示就白給。
+   起點畫**空心環**(圈住那顆棋,不擋住它的字)、終點畫**實心盤**(要去的地方)。 */
+export function HintIndicator({ x, y, kind }) {
+  const px = x - 4;
+  const pz = y - 4.5;
+  return (
+    <mesh position={[px, 0.06, pz]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+      {kind === 'from'
+        ? <ringGeometry args={[0.34, 0.46, 32]} />
+        : <circleGeometry args={[0.3, 32]} />}
+      <meshBasicMaterial color="#a855f7" transparent opacity={0.9} depthWrite={false} />
+    </mesh>
+  );
+}
+
 export function ValidMoveIndicator({ x, y, onClick }) {
   const px = x - 4;
   const pz = y - 4.5;
@@ -28,6 +45,11 @@ function App() {
   const [is2D, setIs2D] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  /* 💡 AI 提示:{ from, to, hash } —— hash 是算它的時候那個局面的 zobrist。
+     局面一變 hash 就對不上 ⇒ 舊建議自己失效,不必去每個動棋盤的地方補一行清除
+     (逐處補漏一處就是「提示指著一格早就過期的棋」,而且不會有任何東西報錯)。 */
+  const [hint, setHint] = useState(null);
+  const [hintThinking, setHintThinking] = useState(false);
   const controlsRef = useRef();
 
   useEffect(() => {
@@ -55,6 +77,18 @@ function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
+
+  /* 🔬 冒煙驗收的把手 —— **只讀**,不改任何遊戲行為。
+     沒有 deps 陣列是刻意的:每次 render 都換上最新的一份,
+     測試才不會抓到上一輪的 hint。 */
+  useEffect(() => {
+    window.__anchess = {
+      engine,
+      get hint() { return hint; },
+      get thinking() { return hintThinking; },
+      get selected() { return selectedPiece; },
+    };
+  });
 
   // Compute available moves for the selected piece
   const availableMoves = useMemo(() => {
@@ -133,6 +167,47 @@ function App() {
     } else {
       setSelectedPiece(null);
     }
+  };
+
+  /* 💡 AI 提示:借的是**同一支** getBestMoveAlphaBeta —— 提示與對手同源;
+     另寫一套搜尋的話,兩邊分岔的那天不會有任何東西提醒你。
+     ★ 深度是**量出來的**不是猜的(0901 本機實測,開局後兩手):
+         depth 2 = 38ms · depth 3 = 123~160ms · depth 4 = 1.9s · depth 5 = 6.8s
+       這支搜尋是同步的、跑在 React 主執行緒上 ⇒ depth 4 以上按下去畫面直接凍住。
+       所以提示至少 depth 3(difficulty 6);玩家自己選了更高難度就跟著他 ——
+       他已經在每一手 AI 思考時接受過那個等待了。
+     ★ openingStyle 傳 'none':開局書只對黑方生效,而且提示應該是「算出來的一手」,
+       不是照本宣科的定石。 */
+  const showHint = () => {
+    if (hintThinking) return;
+    if (engine.turn !== playerColor) return;      // 不是你的回合
+
+    if (hint && hint.hash === engine.zobristHash) return;   // 同局面 ⇒ 同一手,不重算
+
+    setHintThinking(true);
+    // 讓瀏覽器先把「想一手…」畫出來,再進同步搜尋
+    setTimeout(() => {
+      let best = null;
+      try {
+        best = getBestMoveAlphaBeta(engine, Math.max(difficulty, 6), 'none');
+      } catch (error) {
+        console.error('[hint] getBestMoveAlphaBeta threw:', error);
+        setHintThinking(false);
+        alert('💡 這一手算不出來,先自己走走看。');
+        return;
+      }
+      // 用真正的走法規則驗一次:提示一手玩家點不動的棋,比沒有提示更糟
+      const legal = best
+        && engine.getPieceMoves(best.from[0], best.from[1])
+          .some((m) => m[0] === best.to[0] && m[1] === best.to[1]);
+      setHintThinking(false);
+      if (!legal) {
+        alert('💡 找不到可走的棋了。');
+        return;
+      }
+      setHint({ from: best.from, to: best.to, hash: engine.zobristHash });
+      setSelectedPiece(best.from);   // 順手選起來:接著點紫盤就走完
+    }, 30);
   };
 
   const makeAIMove = () => {
@@ -245,6 +320,15 @@ function App() {
               </label>
             </div>
             <div className="buttons">
+              <button
+                id="hintButton"
+                onClick={showHint}
+                disabled={hintThinking}
+                title="讓 AI 幫你想一手"
+                style={{ background: '#a855f7' }}
+              >
+                {hintThinking ? '💡 想一手…' : '💡 提示 (Hint)'}
+              </button>
               <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
               <button onClick={restartGame} style={{ background: '#FF5722' }}>重新開局 (Restart)</button>
               <button onClick={undo}>悔棋 (Undo)</button>
@@ -290,6 +374,13 @@ function App() {
               onClick={(e) => { e.stopPropagation(); tryMove(selectedPiece, [mx, my]); }}
             />
           ))}
+          {/* 💡 提示:hash 對得上才畫 —— 局面一變它自己就不見了,不必逐處清 */}
+          {hint && hint.hash === engine.zobristHash && (
+            <>
+              <HintIndicator key="hint-from" x={hint.from[0]} y={hint.from[1]} kind="from" />
+              <HintIndicator key="hint-to" x={hint.to[0]} y={hint.to[1]} kind="to" />
+            </>
+          )}
         </group>
         <OrbitControls
           ref={controlsRef}
