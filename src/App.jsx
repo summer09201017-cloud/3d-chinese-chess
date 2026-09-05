@@ -97,6 +97,9 @@ function App() {
   }, [selectedPiece, boardState]);
 
   // Sync state to trigger re-renders
+  // 📡 完賽 beacon:一局分出結果(帥/將被吃、絕殺、三次重複犯規)= 一次 -done。打點函式住在 index.html;統計是配菜,失敗靜默。
+  const psDone = () => { try { window.psDone && window.psDone(); } catch { /* noop */ } };
+
   const syncBoard = () => {
     setBoardState(engine.board.map(row => [...row]));
 
@@ -108,16 +111,19 @@ function App() {
 
     if (!redAlive) {
       setTimeout(() => alert('紅方帥被吃，黑方獲勝！遊戲結束。'), 100);
+      psDone();
       return false;
     }
     if (!blackAlive) {
       setTimeout(() => alert('黑方將被吃，紅方獲勝！遊戲結束。'), 100);
+      psDone();
       return false;
     }
 
     if (engine.isCheckmate()) {
       const winner = engine.turn === 'w' ? '黑方 (AI)' : '紅方 (玩家)';
       setTimeout(() => alert(`絕殺無解！${winner}獲勝！遊戲結束。`), 100);
+      psDone();
       return false;
     }
 
@@ -125,6 +131,7 @@ function App() {
       const loser = engine.turn === 'w' ? '黑方 (AI)' : '紅方 (玩家)';
       const winner = engine.turn === 'w' ? '紅方 (玩家)' : '黑方 (AI)';
       setTimeout(() => alert(`重複走法追追追達三次！${loser}犯規，${winner}獲勝！遊戲結束。`), 100);
+      psDone();
       return false;
     }
 

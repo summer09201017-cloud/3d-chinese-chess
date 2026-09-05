@@ -1,6 +1,7 @@
 [build]
   command = "npm install --legacy-peer-deps && npm run build"
   publish = "dist"
+  ignore = "exit 0"   # 0905 止血(skill netlify-autobuild-stop):Git 觸發的雲端 build 一律取消;正版在 CF Pages(3d-chinese-chess / 3dchinese / 3dchinesechess)
 
 [[redirects]]
   from = "/*"
