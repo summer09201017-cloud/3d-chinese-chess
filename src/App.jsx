@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { GameEngine } from './game/logic';
-import { getBestMoveAlphaBeta } from './game/ai';
+import { getBestMoveAlphaBeta, getHintMove } from './game/ai';
 import { Board } from './components/Board';
 import { Piece } from './components/Piece';
 
@@ -176,15 +176,17 @@ function App() {
     }
   };
 
-  /* 💡 AI 提示:借的是**同一支** getBestMoveAlphaBeta —— 提示與對手同源;
-     另寫一套搜尋的話,兩邊分岔的那天不會有任何東西提醒你。
-     ★ 深度是**量出來的**不是猜的(0901 本機實測,開局後兩手):
-         depth 2 = 38ms · depth 3 = 123~160ms · depth 4 = 1.9s · depth 5 = 6.8s
-       這支搜尋是同步的、跑在 React 主執行緒上 ⇒ depth 4 以上按下去畫面直接凍住。
-       所以提示至少 depth 3(difficulty 6);玩家自己選了更高難度就跟著他 ——
-       他已經在每一手 AI 思考時接受過那個等待了。
-     ★ openingStyle 傳 'none':開局書只對黑方生效,而且提示應該是「算出來的一手」,
-       不是照本宣科的定石。 */
+  /* 💡 AI 提示(2026-09-07 改用 getHintMove;與對手共用同一支 searchAlphaBeta,只是根層規矩不同)
+     使用者退件:「提示常叫我吃掉某顆,吃完又被吃回,等於交換被吃」。舊寫法
+     getBestMoveAlphaBeta(engine, max(difficulty,6), 'none') 有三個問題:
+       ① 根層 moves.sort(() => Math.random() - 0.5) + 「分數嚴格變好才換人」⇒ 同分隨機挑,
+          而舊評估只算子力、中局九成走法都是 0 分平手 ⇒ 等價交換就這樣被抽中;
+       ② 深度跟著玩家選的難度走 —— 選「簡單」時提示只有 depth 2,等於隨便給;
+       ③ 深度 3 是奇數層,「我吃→他回吃→我再吃」看起來賺,第 4 步被吃回看不到。
+     現在 getHintMove():固定深度、零隨機、葉子有 quiescence,而且吃子要「交換算到底真的賺到子」
+     + 「比最好的安靜手多賺半個兵」兩關都過才建議,否則建議走位。
+     ★ 速度反而更快(本機 test/ai.mjs:30 個隨機中局平均 57ms、最慢 130ms),
+       因為 MVV-LVA 排序讓 alpha-beta 剪得動;仍然保留 setTimeout 讓畫面先畫「想一手…」。 */
   const showHint = () => {
     if (hintThinking) return;
     if (engine.turn !== playerColor) return;      // 不是你的回合
@@ -196,9 +198,9 @@ function App() {
     setTimeout(() => {
       let best = null;
       try {
-        best = getBestMoveAlphaBeta(engine, Math.max(difficulty, 6), 'none');
+        best = getHintMove(engine);
       } catch (error) {
-        console.error('[hint] getBestMoveAlphaBeta threw:', error);
+        console.error('[hint] getHintMove threw:', error);
         setHintThinking(false);
         alert('💡 這一手算不出來,先自己走走看。');
         return;
