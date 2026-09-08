@@ -1,0 +1,91 @@
+============================================================
+3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
+更新:2026-09-07(HFP 機・Opus 5・session 0906-3D西洋棋棋字名)
+      🎯 💡 提示不再建議「等價/虧本交換」(PST 位置分 + 葉子靜態搜尋 + 提示兩道關卡)
+============================================================
+
+★★★★★ 2026-09-07 🎯 提示品質大修 ✅ 已上線(fc45626;三個 CF 專案都部署了)★★★★★
+
+  由來:使用者在姊妹站 3D 幻影西洋棋退件——
+        「AI 提示為何常叫我吃掉哪一個對手,我吃掉之後又被對手其他棋子吃掉,這樣等於交換被吃」
+        ⇒ 做了一輪**全棋類提示體檢**,本站是紅燈(兩條經典病因都在,外加一條自己獨有的)。
+
+  病因(確診,不是猜):
+    ① 同分偏好吃子:evaluateBoard 只加總子力 ⇒ 中局九成走法是 0 分平手;
+       根層 moves.sort(random) + 「嚴格變好才換人」⇒ 平手裡隨機挑,等價交換被當成建議送出。
+    ② 水平線效應:提示深度 3 是奇數層,「我吃→他回吃→我再吃」看起來賺,第 4 步被吃回看不到。
+    ③ 本站獨有:提示深度跟著玩家選的難度走(Math.max(difficulty,6))⇒ 選「簡單」時只有 depth 2。
+
+  改動(src/game/ai.js + src/App.jsx):
+    - PST 位置表(沿用 3D-Xiangqi 已驗證那組)。⚠ 座標系不同:紅子查 PST[9-y][x]、黑子查 PST[y][x];
+      士象王不給位置分。
+    - 內層 minimax 抽成模組層 searchAlphaBeta(呼叫端簽名不變,用一個本地箭頭函式包住);
+      葉子改走 quiescence(只續走吃子,qdepth 4)。
+    - MVV-LVA orderMovesInPlace:不改分數只改快慢 ⇒ 提示 123ms → 57ms。
+    - getHintMove():固定 depth 3、零隨機、兩段式(先安靜手,吃子要過①子力關 captureGain>0
+      ②分數關 HINT_TRADE_MARGIN=50 半個兵)。App.jsx 的 showHint 改呼叫它。
+    - AI 對手仍走 getBestMoveAlphaBeta,棋力不受門檻約束(只是跟著吃到 PST 的紅利)。
+
+  測試:新增 test/ai.mjs 11/0(4 個手工陷阱局面 + 30 個隨機中局用**獨立裁判** refQuiesce 驗
+        「沒有比場上最好的一手明顯虧」+ 零隨機 + 耗時 avg 57ms max 130ms);npm run check 10/0。
+        npm test 從無到有(以前 package.json 沒有 test script)。
+
+  ⚠⚠ 測試判準的教訓(第一版假紅了三筆,兩筆還是安靜手):
+     判準**不可以**是「這一手的淨子力 ≥ 0」——局面本來就在挨打時,每一手都是負的,那不是提示的錯。
+     要問的是「**有沒有比場上最好的那一手明顯虧**」。安靜手再放寬一個兵(裁判只看子力,看不出位置補償)。
+
+  🟡 順手發現、**這輪沒有動**的既有問題:
+     - npm run lint 有 4 個問題(3 error 1 warning),改動前後數量完全相同 ⇒ 是既有的,不是這輪造成。
+     - README.md 在這輪之前一直是 Vite 預設範本(「React + Vite」那份),已重寫。
+
+★ 這是什麼
+  React + Three.js 的 3D 中國象棋 PWA(Vite 建置)。單機對 AI,難度 1~10,含開局譜。
+  GitHub summer09201017-cloud/3d-chinese-chess(分支 main)。
+  ⚠ **同一份 build 部署到三個 Cloudflare Pages 專案**(3d-chinese-chess / 3dchinesechess / 3dchinese),
+    三個網址內容相同。改一次要部署三次,否則三站會漂。
+
+★ 現在到哪(2026-09-07)
+  ✅ 本輪:💡 提示品質大修(見上面 ★ 段),三站都已部署、build 指紋三站一致。
+  ✅ 先前:⛶ 手機放大鈕(0907 別場批次,91e3750)、📡 play-stats 三層打點(88db727)。
+  ⏩ 進行中:無。
+  🔴 待做第一件:無 🔴。
+  📋 待使用者拍板:無。
+
+  git 實況(2026-09-07 交接前真的問過 git,不是憑印象):
+    git -C 3d-chinese-chess status --short   → 空
+    git -C 3d-chinese-chess log --oneline -1 → fc45626
+    git -C 3d-chinese-chess rev-list --count @{u}..HEAD → 0(真的推上去了)
+
+★ 怎麼跑 / 測 / 部署
+  npm install
+  npm test                      # test/ai.mjs 11 項(提示品質)
+  npm run build                 # 產出 dist/
+  npm run serve                 # 另一個視窗:靜態伺服 dist/(埠 8799)
+  npm run check                 # 真瀏覽器冒煙 10 項(💡 提示)
+  部署(⚠ 直傳站,push 不會上線;而且要傳三次):
+    npx wrangler pages deploy dist --project-name 3d-chinese-chess  --branch main --commit-dirty=true
+    npx wrangler pages deploy dist --project-name 3dchinesechess    --branch main --commit-dirty=true
+    npx wrangler pages deploy dist --project-name 3dchinese         --branch main --commit-dirty=true
+  線上驗收(比 build 指紋,三站要一致):
+    ls dist/assets/index-*.js
+    curl -s "https://3d-chinese-chess.pages.dev/?b=$RANDOM" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
+
+★ 本機地雷
+  - PWA 走 vite-plugin-pwa 的 autoUpdate ⇒ 每次 build 產新 SW,**不必手動 bump 版號**
+    (與艦隊其他手寫 sw.js 的站不同,別照抄那套 CACHE_NAME +1 的流程)。
+  - getLegalMoves() 是**偽合法**(原始碼註解寫明不檢查自將),終局靠「王被吃掉」判。
+    加任何搜尋邏輯都要照這套語意,別假設它會擋自將。
+  - 搜尋分數是「紅方為正」的絕對分,不是 negamax;maximizing ⟺ engine.turn === 'w'。
+  - 頁面 <title> 是 3d-an(沿用範本專案名),不是打錯字。
+  - 姊妹站 3D-Xiangqi / xiangqi-arena 是另外兩個 repo、另外兩個 CF 專案,引擎與題庫都不同。
+
+★ 檔案在哪
+  src/App.jsx(接線 + 提示標記)/ src/game/logic.js(GameEngine)/ src/game/ai.js(評估與搜尋)
+  test/ai.mjs / scripts/browser-check.mjs / scripts/serve-dist.mjs
+  給人讀:README.md(這輪從 Vite 範本重寫)
+
+★ 下一步
+  無指定;若要動引擎,先讀 src/game/ai.js 檔頭那三段註解(PST 座標、quiescence、提示兩關)。
+
+★ 一鍵裝齊 skill
+  /take-over(pull hfpc-claude-skills → install.bat → sites.json → /sit-down)
