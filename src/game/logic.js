@@ -64,7 +64,15 @@ export class GameEngine {
     return this.isRed(piece) ? 'w' : 'b';
   }
 
-  getLegalMoves() {
+  /* 純幾何走法(不管走完會不會被將軍)。
+     ★ 這一份**故意**保留:alpha-beta 搜尋每個節點都要產生走法,
+       每一步都做一次完整的王安全檢查會慢十倍(姊妹站量過)。
+       搜尋內部用它 + 「吃到王 = 直接贏」在語意上等價(ai.js 的 lastCap === 'k' 就是這個),
+       真正的合法性只在**根節點**做一次(見 getLegalMoves)。
+     ⚠ 原本這支就叫 getLegalMoves,而且自己的註解寫著「we do not check if move leaves king
+       in check」—— 名字說謊了很久:UI 拿它畫可走點、拿它驗玩家的點擊,
+       所以玩家**走得出送將的棋**,然後被電腦吃掉帥判負。2026-09-09 改名並補上真的合法性。 */
+  getPseudoMoves() {
     const moves = [];
     for (let y = 0; y < 10; y++) {
       for (let x = 0; x < 9; x++) {
@@ -72,14 +80,86 @@ export class GameEngine {
         if (piece !== '.' && this.getColor(piece) === this.turn) {
           const pieceMoves = this.getPieceMoves(x, y);
           for (const m of pieceMoves) {
-            // simplified: we do not check if move leaves king in check for this basic version
-            // in a real engine you would verify this.board state after move.
             moves.push({ from: [x, y], to: m, piece });
           }
         }
       }
     }
     return moves;
+  }
+
+  /** 找某一方的王;找不到回 null(搜尋中王被吃掉的局面會出現) */
+  findKing(color) {
+    const want = color === 'w' ? 'K' : 'k';
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 9; x++) if (this.board[y][x] === want) return [x, y];
+    }
+    return null;
+  }
+
+  /* ⑥ 飛將:兩個王在同一直線、中間沒有任何子 ⇒ 這個局面**不合法**。
+     ★ 做成「局面判定」而不是「王的一種走法」:誰走出這個局面,誰那一步就不准走。
+       這樣紅黑兩邊自動對稱,而且「把對方逼到每一步都會照面」就成立為殺法 —— 不用另外寫。
+     ⚠ logic.js 原本在王的走法那裡留了一行註解
+       `// Flying general: check line of sight to other king` 但**沒有實作**。 */
+  kingsFaceEachOther() {
+    const r = this.findKing('w');
+    const b = this.findKing('b');
+    if (!r || !b || r[0] !== b[0]) return false;
+    const x = r[0];
+    const lo = Math.min(r[1], b[1]) + 1;
+    const hi = Math.max(r[1], b[1]);
+    for (let y = lo; y < hi; y++) if (this.board[y][x] !== '.') return false;
+    return true;
+  }
+
+  /** (x,y) 這一格有沒有被 byColor 攻擊到(用純幾何走法問,夠用且不會遞迴) */
+  isAttacked(x, y, byColor) {
+    const turn = this.turn;
+    this.turn = byColor;
+    let hit = false;
+    const moves = this.getPseudoMoves();
+    for (const m of moves) {
+      if (m.to[0] === x && m.to[1] === y) { hit = true; break; }
+    }
+    this.turn = turn;
+    return hit;
+  }
+
+  /** color 是否正被將軍 */
+  isInCheck(color) {
+    const k = this.findKing(color);
+    if (!k) return true;                       // 王已經不在 = 最糟的情況
+    return this.isAttacked(k[0], k[1], color === 'w' ? 'b' : 'w');
+  }
+
+  /* 真正的合法走法:純幾何 → 逐一試走 → 丟掉「走完自己被將」與「走完兩王照面」的。
+     ★ 只給**根節點與 UI** 用(每一步都 make/undo + 掃全盤,成本高)。 */
+  getLegalMoves() {
+    const me = this.turn;
+    const out = [];
+    for (const m of this.getPseudoMoves()) {
+      this.move(m.from, m.to);
+      const bad = this.isInCheck(me) || this.kingsFaceEachOther();
+      this.undo();
+      if (!bad) out.push(m);
+    }
+    return out;
+  }
+
+  /** UI 用:某一顆棋子**合法**能去的格子(回傳 [x,y] 陣列,和 getPieceMoves 同形狀) */
+  getLegalPieceMoves(cx, cy) {
+    const piece = this.board[cy][cx];
+    if (piece === '.' || this.getColor(piece) !== this.turn) return [];
+    const me = this.turn;
+    const out = [];
+    for (const to of this.getPieceMoves(cx, cy)) {
+      this.move([cx, cy], to);
+      const bad = this.isInCheck(me) || this.kingsFaceEachOther();
+      this.undo();
+      if (!bad) out.push(to);
+    }
+    return out;
   }
 
   getPieceMoves(cx, cy) {
@@ -252,25 +332,11 @@ export class GameEngine {
     this.zobristHash = hash;
   }
 
+  /* 沒有任何**合法**著法 = 這一方輸了。
+     ★ 象棋的「將死」與「困斃(無棋可走)」**都算輸**(和西洋棋的和局不同),所以同一個判斷。
+     ⚠ 舊版是「試每一步,看對手能不能吃到我的王」——那在沒有合法性過濾時是近似解,
+       現在有了真的合法走法,直接數就好,也不會再把「送將之後被吃」當成正常結局。 */
   isCheckmate() {
-    const moves = this.getLegalMoves();
-    if (moves.length === 0) return true;
-    for (const move of moves) {
-      this.move(move.from, move.to);
-      let kingEaten = false;
-      const oppMoves = this.getLegalMoves();
-      for (const opm of oppMoves) {
-        const targetPiece = this.board[opm.to[1]][opm.to[0]];
-        if (targetPiece.toLowerCase() === 'k') {
-          kingEaten = true;
-          break;
-        }
-      }
-      this.undo();
-      if (!kingEaten) {
-        return false;
-      }
+    return this.getLegalMoves().length === 0;
     }
-    return true;
-  }
 }

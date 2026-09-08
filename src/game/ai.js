@@ -137,7 +137,9 @@ function quiescence(engine, a, b, maximizing, qdepth) {
     }
 
     const caps = [];
-    for (const m of engine.getLegalMoves()) {
+    /* 搜尋內部用純幾何走法(快十倍);合法性只在根節點做一次,
+       語意由「吃到王 = 直接贏」(下面的 lastCap === 'k')補上。 */
+    for (const m of engine.getPseudoMoves()) {
         if (engine.board[m.to[1]][m.to[0]] !== '.') caps.push(m);
     }
     if (caps.length === 0) return best;
@@ -180,7 +182,8 @@ function searchAlphaBeta(engine, currentDepth, maximizing, a, b) {
         return quiescence(engine, a, b, maximizing, QUIESCE_DEPTH);
     }
 
-    const moves = engine.getLegalMoves();
+    /* 搜尋內部:純幾何(快);沒棋可走在這裡是「被吃光/困住」,由分數表達 */
+    const moves = engine.getPseudoMoves();
     if (moves.length === 0) return maximizing ? -10000 : 10000;
     orderMovesInPlace(engine, moves);
 
@@ -253,7 +256,9 @@ function materialQuiesce(engine, a, b, maximizing, depth) {
     else { if (best <= a) return best; if (best < b) b = best; }
 
     const caps = [];
-    for (const m of engine.getLegalMoves()) {
+    /* 搜尋內部用純幾何走法(快十倍);合法性只在根節點做一次,
+       語意由「吃到王 = 直接贏」(下面的 lastCap === 'k')補上。 */
+    for (const m of engine.getPseudoMoves()) {
         if (engine.board[m.to[1]][m.to[0]] !== '.') caps.push(m);
     }
     if (caps.length === 0) return best;

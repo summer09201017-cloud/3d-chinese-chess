@@ -105,7 +105,9 @@ function App() {
   // Compute available moves for the selected piece
   const availableMoves = useMemo(() => {
     if (!selectedPiece) return [];
-    return engine.getPieceMoves(selectedPiece[0], selectedPiece[1]);
+    /* ★ 用**合法**走法畫可走點:純幾何那份會把「走了會被將」的格子也畫出來,
+       玩家點下去就等於送將(0909 之前就是這樣輸掉的)。 */
+    return engine.getLegalPieceMoves(selectedPiece[0], selectedPiece[1]);
   }, [selectedPiece, boardState]);
 
   // Sync state to trigger re-renders
@@ -173,7 +175,8 @@ function App() {
   };
 
   const tryMove = (from, to) => {
-    const moves = engine.getPieceMoves(from[0], from[1]);
+    // ★ 驗證也要用合法走法,否則畫面上不畫、但硬點還是走得動
+    const moves = engine.getLegalPieceMoves(from[0], from[1]);
     const isValid = moves.some(m => m[0] === to[0] && m[1] === to[1]);
     if (isValid) {
       engine.move(from, to);
