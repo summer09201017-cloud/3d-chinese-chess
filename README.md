@@ -2,16 +2,64 @@
 
 React + Three.js 的 3D 中國象棋 PWA,單機對 AI。
 
-## 線上網址(⚠ 同一份 build 部署到三個 Cloudflare Pages 專案)
+## 線上網址
 
-| 網址 | CF 專案名 |
-|---|---|
-| https://3d-chinese-chess.pages.dev | `3d-chinese-chess` |
-| https://3dchinesechess.pages.dev | `3dchinesechess` |
-| https://3dchinese.pages.dev | `3dchinese` |
+**正式網址(對外只講這一個)**:<https://3d-chinese-chess.pages.dev>
 
-三個網址內容相同(頁面 `<title>` 都是 `3d-an`)。**改一次要部署三次**,否則三站版本會漂。
+同一份 build 另外掛兩個**別名**(2026-09-09 使用者拍板「三個全部保留、不刪不轉址」——
+分享出去的連結不該壞):
 
+| 網址 | CF 專案名 | 角色 |
+|---|---|---|
+| <https://3d-chinese-chess.pages.dev> | `3d-chinese-chess` | **正式**(和 repo 名、統計 id 三處一致) |
+| <https://3dchinesechess.pages.dev> | `3dchinesechess` | 別名 |
+| <https://3dchinese.pages.dev> | `3dchinese` | 別名 |
+
+★ 為什麼正式網址選 `3d-chinese-chess`(0909 使用者指正我原本選 `3dchinese` 的理由太隨便):
+repo 名、play-stats 的 id、對外網址**三處一致**,以後不會有人搞錯是哪個站;
+而 `3dchinese` 看不出是象棋。
+
+### ⚠ 三個網址內容必須相同 —— 用 `npm run deploy`,不要手動貼三行
+
+```bash
+npm run deploy                  # build → 推三站 → 自動比對三站 build 指紋
+npm run deploy -- --skip-build  # dist 已是最新時
+```
+
+`scripts/deploy-all.mjs` 推完會抓三站的 `assets/index-*.js` 比對,有一站不一致就 exit 1。
+**手動貼三行 wrangler 的老辦法漏一行就有網址停在舊版,而畫面上看不出來** ——
+0909 實測抓到同一種病的鄰居(見下面 netlify 那段)。
+驗收要帶 `Cache-Control: no-cache` + 隨機查詢字串:Cloudflare 邊緣會把剛抓過的舊檔再給你一次
+(0909 被騙過兩次,第一次以為部署沒生效)。
+
+### 🔀 三個舊 `*.netlify.app` 已掛 301(2026-09-09)
+
+`3dchinese` / `3dchinesechess` / `3d-chinese-chess`**.netlify.app** 三個都還活著,
+而且在餵**更舊的 build**(`index-Bp79hA2q` vs 當時正版 `index-CyqHgBnS`)⇒
+從舊連結進來的人會拿到舊版,畫面上完全看不出來。已全部改成 301 殼轉到正式網址。
+
+殼在 `netlify-301/`,兩個檔各有責任:
+
+- `_redirects`:深路徑與資產一律 `301!` 到正式網址(查詢字串自動帶走)。
+- `index.html`:根路徑**刻意不 301**,先跑一段「解除舊 Service Worker + 清掉它的快取」再轉。
+  ★ 理由:舊站曾經是可安裝的 PWA,舊 SW 是 cache-first ⇒ 從手機自己的快取端出整包程式、
+    **根本不連網**,只放 301 的話裝過的人永遠看不到新版。
+    (0909 的活證據:使用者手機上還在玩 `3chinese.netlify.app`,而那個站早就從 Netlify 被刪了。)
+
+還原點(要復原成完整站時用):`3dchinese` `6a96d67eac937900086c1c47` /
+`3dchinesechess` `6a96d67e99fc2c0008fa4887` / `3d-chinese-chess` `6a96d67eddae95000804b2cb`。
+**留置一個月後再刪站**(照 skill `netlify-to-cloudflare-migrate` 慣例)。
+⚠ 三站的 `build_settings.stop_builds` 已是 true,**不要關掉** ——
+Netlify 一重新建置就會用 repo 的 `npm run build` 把 301 殼蓋回完整站
+(`5chess` 0903 就是推個 README 觸發重建、殼被蓋掉,得重掛一次)。
+
+### 為什麼會有三個網址(0909 查證)
+
+重複**不是**在 Cloudflare 產生的,是**從 Netlify 帶過來的**:這個 repo 在 Netlify 帳號下有三個站
+(`netlify sites:list` 實查,三個都 `stop_builds: true`、都有 published deploy),
+搬 CF 時一個 Netlify 站對一個 CF 專案地把每個活著的網址都保下來 ⇒ 三個 CF 專案。
+根因是同一個 repo 被**重複接上 Netlify** 好幾次,每接一次多一個站、每個站都吃 push 自動建置
+—— 正是 0719「Netlify 幾乎每天加值 $10」的來源(見 skill `netlify-autobuild-stop`)。
 ## 功能
 
 - PvAI,難度 1~10(對應搜尋深度 2~5),含五種開局譜(中炮 / 屏風馬 / 飛象 / 挺卒 / 自動)。
@@ -57,22 +105,11 @@ npm run serve               # 另一個視窗:靜態伺服 dist/(埠 8799)
 npm run check               # 真瀏覽器冒煙 10 項(💡 提示;要先 build + serve)
 ```
 
-部署(⚠ **直傳站,`git push` 不會上線;而且要傳三次**):
+部署(⚠ **直傳站,`git push` 不會上線**):
 
 ```bash
-npm run build
-npx wrangler pages deploy dist --project-name 3d-chinese-chess  --branch main --commit-dirty=true
-npx wrangler pages deploy dist --project-name 3dchinesechess    --branch main --commit-dirty=true
-npx wrangler pages deploy dist --project-name 3dchinese         --branch main --commit-dirty=true
+npm run deploy      # build → 推三站 → 驗三站指紋一致(見上面「線上網址」)
 ```
-
-線上驗收(比對 build 指紋,三站要一致):
-
-```bash
-ls dist/assets/index-*.js                                   # 本機這次的檔名
-curl -s "https://3d-chinese-chess.pages.dev/?b=$RANDOM" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js'
-```
-
 ## 檔案在哪
 
 | 檔 | 責任 |

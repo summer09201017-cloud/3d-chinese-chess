@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>已搬家 — 3D 中國象棋</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: #2c3e50; color: #f7f4ee;
+           font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; }
+    .card { max-width: 22rem; padding: 1.5rem; text-align: center; line-height: 1.8; }
+    a { color: #4CAF50; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <!-- 🔀 301 殼(2026-09-09):這個舊網址在餵**更舊的 build**(index-Bp79hA2q,比正版舊兩代),
+       老師從舊連結進來會拿到舊版,而畫面上完全看不出來。
+       ★ 為什麼不是只放 _redirects:這個舊站曾經是**可安裝的 PWA**,舊的 Service Worker 會
+         cache-first 把整包程式從手機自己的快取端出來 ⇒ 根本不連網、看不到任何 301。
+         所以這一頁先**主動解除舊 SW + 清掉它的快取**,再轉去正版。
+         (_redirects 仍然留著,負責非導覽的請求與沒有 JS 的情況。) -->
+  <div class="card">
+    <p>🧭 這個網址已經搬家</p>
+    <p>正在把你送到新家…</p>
+    <p><a id="go" href="https://3d-chinese-chess.pages.dev/">https://3d-chinese-chess.pages.dev</a></p>
+  </div>
+  <script>
+    (function () {
+      var TARGET = 'https://3d-chinese-chess.pages.dev';
+      var to = TARGET + location.pathname + location.search + location.hash;
+      var link = document.getElementById('go');
+      if (link) link.href = to;
+
+      function jump() { location.replace(to); }
+
+      // 先把舊 PWA 拆掉,再走 —— 不拆的話它會一直用自己的快取,永遠看不到新版
+      var jobs = [];
+      try {
+        if ('serviceWorker' in navigator) {
+          jobs.push(navigator.serviceWorker.getRegistrations()
+            .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+            .catch(function () {}));
+        }
+        if (window.caches && caches.keys) {
+          jobs.push(caches.keys()
+            .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+            .catch(function () {}));
+        }
+      } catch (e) { /* 拆不掉也要走,不能把人卡在這一頁 */ }
+
+      // 最多等 1.2 秒:拆完就走,拆不完也走
+      var done = false;
+      function once() { if (!done) { done = true; jump(); } }
+      setTimeout(once, 1200);
+      Promise.all(jobs).then(once, once);
+    })();
+  </script>
+</body>
+</html>
