@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>3d-an</title>
+    <!-- ★ 0909:原本是開發用的「3d-an」,分頁標題與加到主畫面的名字都會用它 -->
+    <title>3D 中國象棋</title>
     <script>
       // 📡 統計打點三層(skill play-stats-lite / play-stats-dwell)。2026-09-05 使用者拍板:所有作品一律接統計,不再有「家庭系不接」的例外。
       //    零個資:只送「站 id + 事件(+秒數)」,沒有 cookie、沒有帳號、不記 IP。離線 / 被擋 / 本機預覽一律靜默 —— 統計是配菜,壞掉絕不影響遊戲。
@@ -54,6 +55,8 @@
 </head>
   <body>
     <div id="root"></div>
+    <!-- 🏷 版本徽章(艦隊鐵則⑦):內容由 src/App.jsx 從 src/version.js 填,頁面不寫死版號 -->
+    <div id="appVerBadge"></div>
     <script type="module" src="/src/main.jsx"></script>
   <!-- mfs-portrait-zoom v1 -->
 <button type="button" id="mfsFull" title="放大(全螢幕)" aria-label="放大(全螢幕)" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>

@@ -5,6 +5,7 @@ import { GameEngine } from './game/logic';
 import { getBestMoveAlphaBeta, getHintMove } from './game/ai';
 import { Board } from './components/Board';
 import { Piece } from './components/Piece';
+import { VERSION, DATE, CHANGELOG } from './version';
 
 /* 💡 提示的標記:紫色。
    綠色已經是「這格我可以走」(ValidMoveIndicator)、選中的棋子也有自己的樣子 ——
@@ -44,6 +45,17 @@ function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [is2D, setIs2D] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+
+  /* 🏷 右下角版本徽章:10 秒後淡出(它是 fixed,會蓋住按鈕的字)。
+     ⚠ 內容從 src/version.js 來,不在這裡寫死版號 —— 寫死的那份一定會漂。 */
+  useEffect(() => {
+    const el = document.getElementById('appVerBadge');
+    if (!el) return;
+    el.textContent = `🏷️ 版本 ${VERSION}(${DATE})`;
+    el.style.transition = 'opacity .8s';
+    const t = setTimeout(() => { el.style.opacity = '0'; }, 10000);
+    return () => clearTimeout(t);
+  }, []);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   /* 💡 AI 提示:{ from, to, hash } —— hash 是算它的時候那個局面的 zobrist。
      局面一變 hash 就對不上 ⇒ 舊建議自己失效,不必去每個動棋盤的地方補一行清除
@@ -328,6 +340,18 @@ function App() {
                 </select>
               </label>
             </div>
+            {/* 🏷 版本與改版簡歷(艦隊鐵則⑦)。預設收合 —— 攤開會把下面的鈕擠出畫面
+                 (撞球 0907 實錄:1202 字的簡歷裸放,選單直接被推出第一屏)。
+                 收合時 summary 那行仍寫著版本與日期 ⇒ 收起來也看得到「我開到的是哪一版」。
+                 ★ 內容只有一份,在 src/version.js;test/version.mjs 守它不漂。 */}
+            <details className="ver-fold">
+              <summary>版本 {VERSION}({DATE})・看看前幾版做了什麼</summary>
+              <div className="ver-tag">
+                {CHANGELOG.map((c) => (
+                  <p key={c.v}><b>{c.v}</b>({c.date}) {c.text}</p>
+                ))}
+              </div>
+            </details>
             <div className="buttons">
               <button
                 id="hintButton"
