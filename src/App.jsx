@@ -3,6 +3,14 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { fitCamera as applyFit } from './fitCamera';
 
+/* 📝 改版簡歷的文案用 `**粗體**` 標重點,但這裡是 React 的 `{c.text}` = **純文字**
+     ⇒ 星號會原封不動印在畫面上(0909 實查:v2 那則從上線就這樣,而且
+       **沒有任何測試會紅、畫面也沒有錯誤** —— 只有人去看才發現)。
+   ⇒ 用 split('**') 交替加粗:偶數段普通、奇數段粗體。
+   ⚠ 星號數量不成對時,最後多出來的那一段會被當成粗體 —— 所以 test/version.mjs
+     另外守「每一則的 ** 必須成對」,不然只是把「印出星號」換成「半句變粗體」。 */
+const richText = (t) => String(t).split('**').map((seg, i) => (i % 2 ? <b key={i}>{seg}</b> : seg));
+
 /* 📐 相機距離照畫布長寬比算(2026-09-09 使用者實機退件:「直向兩側被切,邊路砲馬只剩半顆」)。
    ★ 為什麼要做成 Canvas 裡的元件:R3F 的相機與畫布尺寸只有 `useThree` 拿得到,
      而且尺寸一變它會自己重新 render ⇒ 不必自己聽 window resize(元素全螢幕、側欄收合
@@ -374,7 +382,7 @@ function App() {
               <summary>版本 {VERSION}({DATE})・看看前幾版做了什麼</summary>
               <div className="ver-tag">
                 {CHANGELOG.map((c) => (
-                  <p key={c.v}><b>{c.v}</b>({c.date}) {c.text}</p>
+                  <p key={c.v}><b>{c.v}</b>({c.date}) {richText(c.text)}</p>
                 ))}
               </div>
             </details>

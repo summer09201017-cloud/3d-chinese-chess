@@ -39,6 +39,13 @@ for (const c of CHANGELOG) {
     `${c.v} 的說明不是一句空話(${(c.text || '').length} 字)`);
   ok(!/\b(refactor|commit|函式|function|const |=>)\b/.test(c.text || ''),
     `${c.v} 的說明是寫給家長老師看的,不是 commit 訊息`);
+  /* 📝 文案用 `**粗體**` 標重點,由 App.jsx 的 richText() 用 split('**') 交替加粗
+       ⇒ **星號必須成對**。不成對的話最後多出來的那一段會整段變粗體
+         (只是把「畫面印出星號」換成「半句莫名變粗」,一樣是壞的,而且更難發現)。
+     ★ 由來:0909 實查 v2 那則從上線起就把 `**` 原封不動印在畫面上 ——
+       React 的 {c.text} 是純文字,不會渲染 Markdown。沒有任何測試會紅、畫面也沒有錯誤。 */
+  const stars = ((c.text || '').match(/\*\*/g) || []).length;
+  ok(stars % 2 === 0, `${c.v} 的 ** 粗體標記成對(${stars} 個)`);
 }
 
 console.log((fail ? '🔴' : '🟢') + ` version:${pass} 過 / ${fail} 失敗`);
