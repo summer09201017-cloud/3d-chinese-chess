@@ -11,6 +11,26 @@ import { fitCamera as applyFit } from './fitCamera';
      另外守「每一則的 ** 必須成對」,不然只是把「印出星號」換成「半句變粗體」。 */
 const richText = (t) => String(t).split('**').map((seg, i) => (i % 2 ? <b key={i}>{seg}</b> : seg));
 
+/* 📱 內建瀏覽器偵測(守門 #30)—— **教會的連結都走 LINE 發**。
+     從 LINE 訊息點進來 = LINE 自己的 WebView,`beforeinstallprompt` **永遠不會觸發**
+     ⇒ 「安裝 APP」那顆鈕按了**完全沒有反應**,而使用者在手機設定裡怎麼調都沒用
+     (那不是網站權限、也不是系統開關)⇒ 任何「請去設定裡打開」的文案在這個情境下都是**錯的指引**。
+   ★ 三條分寸(姊妹站 3D-Xiangqi / xiangqi-arena 同一套,本站一直漏了):
+     ① **只提醒不擋** —— LINE 偶爾拿得到,擋掉會誤傷;而且遊戲本身在 WebView 裡完全能玩。
+     ② 命中時**只講「換瀏覽器」那一條** —— 三條並列會讓他先去試沒用的那兩條。
+     ③ **開場就講**,不要等他按下去才失敗 ⇒ 提示直接畫在控制面板裡,同時把安裝鈕收起來
+        (留一顆按了沒反應的鈕,比沒有鈕更糟)。
+   ⚠⚠ **不可以用 `/line/i` 比對** —— "offline"、"Baseline"、"inline" 都會中,要用 `\bLine\/`。
+   ★ 模組層只算一次:UA 在一個分頁裡不會變,放進 render 只是每幀重算同一個答案。 */
+const IN_APP = (() => {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  if (/\bLine\//i.test(ua) || /\bLIFF\b/i.test(ua)) return { n: 'LINE', m: '右上角「⋯」→「用其他瀏覽器開啟」' };
+  if (/FBAN|FBAV|FB_IAB|FB4A/i.test(ua)) return { n: 'Facebook', m: '右上角「⋯」→「在外部瀏覽器中開啟」' };
+  if (/Instagram/i.test(ua)) return { n: 'Instagram', m: '右上角「⋯」→「在瀏覽器中開啟」' };
+  if (/MicroMessenger/i.test(ua)) return { n: '微信', m: '右上角「⋯」→「在瀏覽器中開啟」' };
+  return null;
+})();
+
 /* 📐 相機距離照畫布長寬比算(2026-09-09 使用者實機退件:「直向兩側被切,邊路砲馬只剩半顆」)。
    ★ 為什麼要做成 Canvas 裡的元件:R3F 的相機與畫布尺寸只有 `useThree` 拿得到,
      而且尺寸一變它會自己重新 render ⇒ 不必自己聽 window resize(元素全螢幕、側欄收合
@@ -316,6 +336,11 @@ function App() {
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
       }
+    } else if (IN_APP) {
+      /* 保險道:正常情況下這顆鈕在內建瀏覽器裡根本不會出現(上面直接換成提示文字),
+         但萬一有人從舊快取的殼層進來,文案也不可以說「瀏覽器不支援」——
+         真正的原因是「這是 App 內建的瀏覽器」,而修法只有換瀏覽器一條。 */
+      alert(`在 ${IN_APP.n} 的內建瀏覽器裡沒辦法安裝。請先點${IN_APP.m},再回來按這顆。`);
     } else {
       alert('無法安裝。這可能代表您的瀏覽器不支援 PWA，或者您已經安裝過了。');
     }
@@ -402,7 +427,16 @@ function App() {
               <button onClick={saveGame}>存檔 (Save)</button>
               <button onClick={loadGame}>讀檔 (Load)</button>
               <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
-              <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
+              {/* 📱 內建瀏覽器(LINE/FB/IG/微信)裡裝不了 ⇒ 不留一顆按了沒反應的鈕,
+                     直接換成「怎麼換瀏覽器」的一句話(見上面 IN_APP 那段的三條分寸)。 */}
+              {IN_APP ? (
+                <p className="in-app-hint">
+                  📱 你正用 <b>{IN_APP.n}</b> 的內建瀏覽器開啟 —— 要「安裝 APP」請先點{IN_APP.m}。
+                  <b>遊戲本身可以直接玩,不用換!</b>
+                </p>
+              ) : (
+                <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
+              )}
             </div>
           </>
         )}
