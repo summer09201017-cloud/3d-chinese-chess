@@ -1,6 +1,37 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
+import { fitCamera as applyFit } from './fitCamera';
+
+/* 📐 相機距離照畫布長寬比算(2026-09-09 使用者實機退件:「直向兩側被切,邊路砲馬只剩半顆」)。
+   ★ 為什麼要做成 Canvas 裡的元件:R3F 的相機與畫布尺寸只有 `useThree` 拿得到,
+     而且尺寸一變它會自己重新 render ⇒ 不必自己聽 window resize(元素全螢幕、側欄收合
+     這些「視窗沒變但畫布變了」的情況,window 的 resize 根本不響)。
+   ★ 兩個 effect 刻意分開,因為兩種情況要的行為不同:
+       · 2D/3D 切換 ⇒ 角度要**歸位**(keepDirection: false)
+       · 只是尺寸變了(轉向、拖窗)⇒ **保留使用者轉到的角度**,只重算距離
+         (轉了半天結果一轉向就被拉回正面 = 比不 fit 還討厭)
+   ⚠ 一個 effect 用 [size, is2D] 當 deps 是分不出「誰變了」的 —— 那正是會寫錯的地方。 */
+function FitCamera({ is2D, scale, controlsRef, fitRef }) {
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+
+  const run = (keepDirection) => applyFit(camera, controlsRef.current, {
+    is2D, scale, aspect: width / Math.max(1, height), keepDirection,
+  });
+
+  // 角度歸位:掛載時 + 2D/3D 切換時。順手把「重新 fit」交給 resetCamera 用。
+  useEffect(() => {
+    if (fitRef) fitRef.current = () => run(false);
+    run(false);
+  }, [camera, is2D]);
+
+  // 只重算距離:畫布尺寸或場景縮放變了(轉向、拖窗、跨過手機/桌機斷點)
+  useEffect(() => { run(true); }, [width, height, scale]);
+
+  return null;
+}
 import { GameEngine } from './game/logic';
 import { getBestMoveAlphaBeta, getHintMove } from './game/ai';
 import { Board } from './components/Board';
@@ -70,16 +101,11 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    if (controlsRef.current) {
-      if (is2D) {
-        controlsRef.current.object.position.set(0, 16, 0.01);
-      } else {
-        controlsRef.current.object.position.set(0, 10, 10);
-      }
-      controlsRef.current.update();
-    }
-  }, [is2D]);
+  /* 📐 2D/3D 切換時的相機由 <FitCamera> 統一算(見 src/fitCamera.js)。
+       ⚠ 這裡原本寫死 `(0,16,0.01)` / `(0,10,10)` —— 那是 0909 使用者退件
+         「直向兩側被切、邊路砲馬只剩半顆」的病根之一(寫死的距離只有寬螢幕裝得下)。
+         **不要再把座標寫回來**;要改角度請改 fitCamera.js 的 DIR_2D / DIR_3D。 */
+  const fitRef = useRef(null);   // <FitCamera> 掛上來的「重新 fit」函式,給 resetCamera 用
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -296,16 +322,13 @@ function App() {
     setSelectedPiece(null);
   };
 
+  /* 🎥 重置視角。★ 一定要**連 target 一起歸零** —— 兩指平移會把注視點拖走,
+       只搬相機位置會變成「從新位置看著被拖歪的中心」,比原本更亂(0909 姊妹站同一條)。
+     ★ 距離交給 fitCamera 重算,不寫死座標(見上面那段註解)。 */
   const resetCamera = () => {
-    if (controlsRef.current) {
-      if (is2D) {
-        controlsRef.current.object.position.set(0, 16, 0.01);
-      } else {
-        controlsRef.current.object.position.set(0, 10, 10);
-      }
-      controlsRef.current.target.set(0, 0, 0);
-      controlsRef.current.update();
-    }
+    if (controlsRef.current) controlsRef.current.target.set(0, 0, 0);
+    if (fitRef.current) fitRef.current();
+    else if (controlsRef.current) controlsRef.current.update();
   };
 
   return (
@@ -377,7 +400,11 @@ function App() {
         )}
       </div>
 
+      {/* ⚠ 這裡的 position/fov 只是**掛載時的種子值**;真正的距離與 fov 由下面的
+            <FitCamera> 照畫布長寬比重算(R3F 的 camera prop 不是 reactive 的,
+            改了 isMobile 它也不會跟著變 —— 別把版面邏輯放在這一行)。 */}
       <Canvas shadows camera={{ position: [0, 8, 8], fov: isMobile ? 55 : 45 }}>
+        <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} />
         <color attach="background" args={['#2c3e50']} />
         <ambientLight intensity={0.5} />
         <directionalLight
