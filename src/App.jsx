@@ -419,11 +419,19 @@ function App() {
             row.map((p, x) => {
               if (p === '.') return null;
               const isSelected = selectedPiece && selectedPiece[0] === x && selectedPiece[1] === y;
+              /* 🔴 「這顆吃得到」= 它站在我選中的那顆子的合法落點上,或它就是 AI 提示要吃的那一顆。
+                 ⚠ 提示要**連 hash 一起比**(和下面 HintIndicator 同一條):局面一變 hash 就對不上,
+                   舊建議自己失效 —— 不然會有一顆棋子在局面變了之後還紅著。 */
+              const hintLive = hint && hint.hash === engine.zobristHash;
+              const isCapturable =
+                availableMoves.some(([mx, my]) => mx === x && my === y)
+                || Boolean(hintLive && hint.to[0] === x && hint.to[1] === y);
               return (
                 <Piece
                   key={`${x}-${y}-${p}`}
                   x={x} y={y} type={p}
                   selected={isSelected}
+                  capturable={isCapturable}
                   onClick={(e) => { e.stopPropagation(); handlePieceClick(x, y); }}
                 />
               )

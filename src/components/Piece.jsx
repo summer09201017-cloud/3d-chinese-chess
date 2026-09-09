@@ -17,7 +17,20 @@ function getPieceDetails(type) {
     return { isRed, label };
 }
 
-export function Piece({ x, y, type, selected, onClick }) {
+/* 🔴 「這顆吃得到」的顏色(2026-09-09 使用者指定:
+     「讓炮能夠吃的棋子變成其他顏色,AI 提示也要」)。
+   ★ 為什麼特別是炮:車馬象的吃子目標就在走的路徑上,看得出來;**炮要隔一顆打**,
+     目標不相鄰、中間還隔著別的棋子 ⇒ 小朋友根本看不出「原來那一顆吃得到」。
+   ★ 為什麼要染主體:綠點是畫在**格子**上的,而可吃的目標那一格**站著一顆棋子**
+     ⇒ 點被棋子壓住,等於沒畫。染那一顆本身才看得到。
+   ★ 配色分工:🟠 橘 = 我選的那一顆(只有一顆) 🔴 紅 = 這些吃得到 🟢 綠 = 可以走到這裡(空點)
+   ★ 上層用**淡**珊瑚紅、底座用濃紅:字是紅/深藍的 3D Text 疊在上面,底色太濃就讀不出來。
+   ⚠ selected 與 capturable 不會同時成立(選的是自己的子、吃的是對方的子),
+     但還是明確給 selected 優先,免得將來有人加「選對方的子看它能走哪」時靜靜地兩色打架。 */
+const TOP = { normal: '#fdfaf6', selected: '#f4a261', capturable: '#ff8a80' };
+const BOTTOM = { normal: '#4CAF50', selected: '#2e7d32', capturable: '#c62828' };
+
+export function Piece({ x, y, type, selected, capturable, onClick }) {
     const { isRed, label } = getPieceDetails(type);
 
     // Board coordinates: x in [0, 8], y in [0, 9]
@@ -27,20 +40,20 @@ export function Piece({ x, y, type, selected, onClick }) {
     const py = 0.25; // Height above board
 
     const color = isRed ? '#e63946' : '#1d3557';
-    const selectedColor = '#f4a261';
+    const state = selected ? 'selected' : (capturable ? 'capturable' : 'normal');
 
     return (
         <group position={[px, py, pz]} onClick={onClick}>
             {/* Top Half */}
             <mesh castShadow receiveShadow position={[0, 0.05, 0]}>
                 <cylinderGeometry args={[0.4, 0.42, 0.15, 32]} />
-                <meshStandardMaterial color={selected ? selectedColor : '#fdfaf6'} />
+                <meshStandardMaterial color={TOP[state]} />
             </mesh>
 
-            {/* Bottom Half (Green) */}
+            {/* Bottom Half (Green / 選中深綠 / 吃得到深紅) */}
             <mesh position={[0, -0.1, 0]}>
                 <cylinderGeometry args={[0.42, 0.45, 0.15, 32]} />
-                <meshStandardMaterial color={selected ? '#2e7d32' : '#4CAF50'} />
+                <meshStandardMaterial color={BOTTOM[state]} />
             </mesh>
 
             {/* Text Label */}
