@@ -1,7 +1,45 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-10(agape250 機・Opus 5)📐 橫式棋盤加寬超過姊妹站 + 俯角 62°(v13,三站已部署:指紋 index-D0t4HvsK.js)
+更新:2026-09-10(agape250 機・Sonnet 5)🐛 修好黑方沒反應/棋盤憑空多子(v14,三站已部署:指紋 index-Urjh1ODy.js)
 ============================================================
+
+★★★★★ 2026-09-10(agape250 機・Sonnet 5)🐛 修好嚴重 bug:黑方偶爾完全沒反應 + 棋盤憑空多子 ✅ 已上線(e67e360,v14)★★★★★
+  由來:使用者三張實機截圖回報退件①「炮走一步後黑方完全沒反應」②「炮跟砲之間沒有棋子,
+       為何砲會變紅色?BUG」③「我走右邊炮後,黑方一次走兩步」。
+  用真滑鼠點擊(Playwright `page.mouse.click`,不是 `page.evaluate` 繞過事件系統)重演,
+  第一次就在 console 抓到未 minify 的堆疊:
+    PAGEERROR: Cannot access 'minimax' before initialization
+      at getBestMoveAlphaBeta (src/game/ai.js) ← at makeAIMove (src/App.jsx)
+  ★★ 真因:`getBestMoveAlphaBeta` 裡 `const minimax = ...` 宣告在函式後段(原第 472 行),
+    但「黑方要不要照開局書走」那段安全檢查(原第 463 行)早就在用它——JS `const`/`let`
+    有暫存死區(TDZ),同一作用域內、宣告那一行**執行之前**引用會直接丟 ReferenceError。
+    openingStyle 預設就是 'auto',黑方開局前幾手幾乎每一局都會踩到,不是偶發。
+    連鎖後果更嚴重:那段先 `engine.move(...)` 把測試手真的套用到共用 engine 物件上,
+    再呼叫 `minimax(...)` 驗證安不安全,驗完 `engine.undo()` 撤銷——TDZ 例外剛好炸在
+    move 與 undo **之間**,undo 永遠不會執行,一步「洩漏」的測試手就永久黏在真正盤面上。
+    例外一路炸出 makeAIMove,React 的 `boardState` 沒機會同步 ⇒ 畫面完全沒變化(①);
+    下一次任何操作觸發重繪就冒出這顆憑空多出來的棋子(③);如果它剛好卡進兩尊炮中間,
+    炮就會被正確判定「吃得到」而變紅,但玩家螢幕還停在舊畫面,才會覺得「中間明明沒棋子」(②)。
+    **三件退件,一個真因。**
+  改動(src/game/ai.js):
+    ① `const minimax = ...` 搬到函式最前面,第一次被用到之前就先宣告好。
+    ② 「先試走、算完再收回去」那段加 try/finally:不管 minimax 順不順利,undo 一定執行,
+       以後這附近再出別的例外也不會再洩漏測試手到真正盤面上。
+  守門(引擎層 + 端對端瀏覽器層都補了永久測試):
+    · test/ai.mjs 第④節:紅方先動一手(讓黑方真的輪到用開局書),對每一種 openingStyle
+      斷言「不拋例外」+「給得出合法一手」+「engine.history 長度沒有洩漏殘留」。
+      ★ 突變驗過:宣告搬回原位重現 TDZ ⇒ 15/15 條當場紅(auto/cannon/screen_horse/
+      elephant/pawn 五種書都炸,只有 'none' 沒事——精準對上「幾乎每局都中」)。
+    · scripts/check-mobile-ui.mjs 第⑥節:真滑鼠點擊選紅炮、走一步、等 AI,斷言零例外、
+      turn 真的輪回紅方、棋子總數沒有憑空增減。引擎層測試證明不了「畫面上點了會不會動」,
+      這是使用者實際互動發現的 bug,所以補真點擊版本。
+    · `window.__anchess` 加 `screenPosFor(x,y)`:借用真相機的投影矩陣算格座標的真實螢幕
+      像素,讓自動化測試能用 `page.mouse.click` 走真正的 raycast onClick。
+  測試:npm test(ai 29・version 62・legality 20・fit 24)、check:mobile 19/0,全綠。
+  部署:npm run deploy(第一站成功後 wrangler 收尾又是那個已知的本機原生崩潰,手動補推
+    另外兩站);三站指紋一致 index-Urjh1ODy.js,線上驗過(含 curl 下載 bundle 確認
+    `screenPosFor`/`v14` 字樣都在線上)。
+  git 實況(交接前真的問過 git):status --short 空、HEAD e67e360、rev-list @{u}..HEAD = 0。
 
 ★★★★★ 2026-09-10(agape250 機・Opus 5)📐 橫式棋盤加寬到超過姊妹站 + 俯角 62° ✅ 已上線(dd03c98,v13)★★★★★
   由來:使用者「橫式棋盤要更寬,至少跟 3d-xiangqi.pages.dev 與 incandescent-stroopwafel-31007a
