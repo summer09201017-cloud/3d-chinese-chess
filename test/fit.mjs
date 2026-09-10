@@ -99,5 +99,32 @@ console.log('\n── ③ 純數學的邊界條件 ──');
     '⚠ dir ∥ worldUp 時 cross 是零向量,沒守就會 NaN,而 NaN 相機不報錯、畫面直接空白');
 }
 
+console.log('\n── ④ 橫式棋盤要比姊妹站(3D-Xiangqi/xiangqi-arena)的簡化公式那樣「敢貼近一點」──');
+{
+  /* 2026-09-10 使用者拿三站截圖比對:本站橫式棋盤明顯比另外兩站小。查出來 8 角精算法
+     在寬螢幕時比姊妹站的「棋盤攤平配 fov」簡化公式保守不少——保守到肉眼看得出差異,
+     但那份餘裕在**直向**是真的救過命(0909「邊路砲馬只剩半顆」),不能整支拔掉。
+     ⇒ 只在 3D + 橫式(aspect≥1)改用簡化公式,這裡守兩件事:
+       ①真的比原本的 8 角精算法距離更近(棋盤看起來更大)②依然不裁切(≤100%)。
+     直向(見上面①的斷言)完全沒被這次改動碰到,继续用 8 角精算法。 */
+  const aspect = 844 / 390;
+  const distExact = requiredDistance({ fovDeg: 45, aspect, dir: DIR_3D, scale: 1.0 });
+  const fake = {
+    fov: 45, aspect, position: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+    updateProjectionMatrix() {},
+  };
+  const controls = { target: { x: 0, y: 0, z: 0 }, maxDistance: 25, update() {} };
+  const distFlat = fitCamera(fake, controls, { is2D: false, aspect, scale: 1.0 });
+  ok(distFlat < distExact, `★ 橫式(844x390)真的比 8 角精算法貼近了(${distFlat.toFixed(1)} < ${distExact.toFixed(1)})`);
+
+  let worst = 0;
+  for (const p of corners(1.0)) {
+    const pr = project(p, [fake.position.x, fake.position.y, fake.position.z], [0, 0, 0], fake.fov, aspect);
+    worst = Math.max(worst, pr.x, pr.y);
+  }
+  ok(worst <= 1.0, `★★ 貼近之後依然沒裁切(佔滿 ${(worst * 100).toFixed(1)}%)`, `worst=${worst.toFixed(3)}`);
+  ok(worst >= 0.9, '★ 而且真的「貼近」了,不是換公式换假的(至少佔滿 90%)', `worst=${worst.toFixed(3)}`);
+}
+
 console.log(`\n${fail === 0 ? '🟢' : '🔴'} fit:${pass} 過 / ${fail} 失敗`);
 process.exit(fail ? 1 : 0);

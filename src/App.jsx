@@ -215,6 +215,12 @@ function App() {
         const c = document.querySelector('canvas');
         return c ? c.clientWidth / Math.max(1, c.clientHeight) : null;
       },
+      // 0910 補:診斷「橫式棋盤比姊妹站小」用——距離與 fov 才看得出是不是退太遠。
+      get camDistance() {
+        const p = controlsRef.current?.object?.position;
+        return p ? Math.hypot(p.x, p.y, p.z) : null;
+      },
+      get camFov() { return controlsRef.current?.object?.fov ?? null; },
     };
   });
 

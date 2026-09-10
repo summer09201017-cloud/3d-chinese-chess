@@ -104,7 +104,27 @@ export function fitCamera(camera, controls, { is2D, aspect, scale = 1, keepDirec
      camera 不是 reactive 的)⇒ 手機↔桌機跨過 768px 時 fov 不會跟著變。
      在這裡明確設 ⇒ 轉向、拖窗、換裝置都一致。 */
   camera.fov = is2D ? 45 : (aspect < 1 ? 55 : 45);
-  const d = requiredDistance({ fovDeg: camera.fov, aspect, dir, scale });
+  /* 📱 橫式棋盤比姊妹站(3D-Xiangqi / xiangqi-arena)小(2026-09-10 使用者拿三站截圖比對出來的)。
+     量出來的真因:8 角精算法(下面 requiredDistance)是對的——它保證連「最貼近鏡頭那顆棋子的
+     頂面邊角」都不會被切,這件事在**直向**極窄畫面(0909 那次「邊路砲馬只剩半顆」的退件)
+     非常重要,不能動。但橫式時它比姊妹站那種「棋盤攤平當 2D 矩形去配 fov」的簡化算法保守
+     不少,保守到肉眼看得出「同樣棋子,這站比較小」。
+     ⇒ 只在「3D + 橫式(aspect≥1)」改用姊妹站那款簡化公式,直向與 2D 模式完全不動
+       (那兩種情況原本就沒有這個「太保守」的抱怨,亂動反而會把 0909 那個舊病引回來)。
+     ⚠ 這個簡化公式**確實**比 8 角精算法少留一點餘裕(test/fit.mjs 量到橫向極端尺寸下
+       worst≈1.03,即約 3% 的角落理論上會超出視錐一點點)——跟姊妹站长期使用、没人反映
+       裁切的那個算法是**同一條公式**,同一等級的風險,不是憑空降低標準。 */
+  let d;
+  if (!is2D && aspect >= 1) {
+    const halfFovFlat = (camera.fov * Math.PI) / 180 / 2;
+    const boardWFlat = BOARD.halfX * 2 * scale;
+    const boardHFlat = BOARD.halfZ * 2 * scale;
+    const distForH = (boardHFlat / 2) / Math.tan(halfFovFlat);
+    const distForW = (boardWFlat / 2) / Math.tan(halfFovFlat) / aspect;
+    d = Math.max(distForH, distForW) * 1.04;
+  } else {
+    d = requiredDistance({ fovDeg: camera.fov, aspect, dir, scale });
+  }
 
   camera.position.set(target.x + dir[0] * d, target.y + dir[1] * d, target.z + dir[2] * d);
   camera.aspect = aspect;
