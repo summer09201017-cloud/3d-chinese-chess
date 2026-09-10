@@ -1,7 +1,37 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-10(agape250 機・Sonnet 5)🎥 俯角改 75 度,後排文字更清楚(v10,三站都已部署:指紋 index-C8zO7evJ.js)
+更新:2026-09-10(agape250 機・Opus 5)🎥 俯角 75° 這次真的生效 + 🖐 手機旋轉降靈敏(v11,三站已部署:指紋 index-D_Z0OXZj.js)
 ============================================================
+
+★★★★★ 2026-09-10(agape250 機・Opus 5)🎥 俯角 75° 真的生效 + 🖐 旋轉降靈敏 ✅ 已上線(19ca426,v11)★★★★★
+  ★★ 本輪最重要的一條(**上一版的交接文件說了謊,在這裡更正**):
+     v10 寫「俯角改 75 度」——**實際上沒有生效**。App.jsx 的
+     `<OrbitControls minPolarAngle={Math.PI/6}>`(30° 極角 = 俯角上限 60°)把 fitCamera
+     設的 75° 夾成 **60.0°**;使用者看到的一直是 60°,所以他才接著說「再加 7 度」。
+     而 test/fit.mjs 第⑤節只斷言「DIR_3D 這個常數是 75」⇒ 全綠。
+     **那是在測「我寫了什麼」,不是「畫出來什麼」。**
+     ⇒ 同一族的坑(設了不代表生效)這個 repo 一天內出現兩次(另一次是 fitRef 閉包過期)。
+       改任何「相機/控制器」參數,一律用真瀏覽器量結果,不要只斷言常數。
+  改動:
+    ① `src/fitCamera.js` 抽出 `DIR_3D_ELEVATION_DEG = 75`(使用者中途說過 82,最後拍板 75),
+       檔頭寫明「改角度一定要同步檢查 App.jsx 的 minPolarAngle 容不容得下」。
+    ② `src/App.jsx` 的 `minPolarAngle`:`Math.PI/6` → `Math.PI/36`(5° 極角 = 俯角上限 85°)。
+       不設 0 是為了離正上方的萬向鎖遠一點,同時留手動再轉陡的空間。
+    ③ 🖐 `rotateSpeed={IS_COARSE_POINTER ? 0.4 : 1.0}`(使用者:「棋盤旋轉太快太靈敏」)。
+       旋轉量 = 2π × 拖曳像素 ÷ 容器高 × rotateSpeed;預設 1.0 在手機劃 150px 轉掉約 64°。
+       0.4 與姊妹站 3D-Xiangqi / xiangqi-arena 同值;滑鼠維持 1.0。
+  守門(這次補的是真瀏覽器量出來的**結果**):
+    · check-mobile-ui 第③節:量 `window.__anchess.camElevation` == 75°±1.5。
+      ★ 突變驗過:minPolarAngle 改回 `Math.PI/6` ⇒ 當場量到 60.0° 變紅。
+    · 第④節:另開 hasTouch context 量 `rotateSpeed`(觸控 0.4 / 滑鼠 1.0)——
+      `pointer: coarse` 是裝置能力,`setViewportSize` 改不出來,一定要換 context。
+    · `window.__anchess` 加唯讀 `camElevation` / `rotateSpeed`。
+  測試:npm test(ai 11・version 50・legality 20・fit 23)、check:mobile 15/0,全綠。
+  部署:npm run deploy(第一站成功後 wrangler 收尾又是那個已知的本機原生崩潰,手動補推
+    另外兩站);三站指紋一致 index-D_Z0OXZj.js,線上驗過。
+  📋 仍未解、使用者已知情:「橫式棋盤要更寬/棋子間距」——見 v10 那段的查證結論
+    (要換一套鏡頭邏輯才做得到,不是調參數能安全達成的);使用者說「下次評估要多少改動」。
+  git 實況(交接前真的問過 git):status --short 空、HEAD 19ca426、rev-list @{u}..HEAD = 0。
 
 ★★★★★ 2026-09-10(agape250 機・Sonnet 5)🎥 俯角改 75 度,後排文字更清楚 ✅ 已上線(b28f23a,v10)★★★★★
   由來:使用者這輪一次提五件:①「重置視角還需要朝上順時鐘再轉30度」②「後排黑色棋子的字
