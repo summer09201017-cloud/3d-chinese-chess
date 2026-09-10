@@ -49,14 +49,20 @@ function FitCamera({ is2D, scale, controlsRef, fitRef }) {
     is2D, scale, aspect: width / Math.max(1, height), keepDirection,
   });
 
-  // 角度歸位:掛載時 + 2D/3D 切換時。順手把「重新 fit」交給 resetCamera 用。
-  useEffect(() => {
-    if (fitRef) fitRef.current = () => run(false);
-    run(false);
-  }, [camera, is2D]);
+  // 角度歸位:掛載時 + 2D/3D 切換時。
+  useEffect(() => { run(false); }, [camera, is2D]);
 
   // 只重算距離:畫布尺寸或場景縮放變了(轉向、拖窗、跨過手機/桌機斷點)
   useEffect(() => { run(true); }, [width, height, scale]);
+
+  /* 0910 補:「重置視角」鈕按下去棋盤變扁(使用者實機退件:「橫向重置視角後,棋盤太扁,
+       這角度看不到棋子」)。病根是 fitRef.current 曾經**只在 [camera, is2D] 這個 effect 裡賦值**,
+       轉向(width/height 變了但 camera、is2D 都沒變)不會讓那個 effect 重跑,於是按鈕綁的
+       還是轉向**之前**那個 run 閉包 —— 裡面關住的是舊的 width/height。按下重置視角時,
+       fitCamera() 會把 camera.aspect 強制寫回那個舊比例,跟畫布**現在**真正的寬高對不上,
+       畫面因此整個被拉扁。改成每次 render 完都刷新 fitRef.current(不放進上面那個
+       只認 [camera, is2D] 的 effect),按鈕永遠拿得到當下最新的 width/height/is2D。 */
+  useEffect(() => { if (fitRef) fitRef.current = () => run(false); });
 
   return null;
 }

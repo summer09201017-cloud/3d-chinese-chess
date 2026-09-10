@@ -95,7 +95,11 @@ h1 {
   display: none;
 }
 
-@media (max-width: 768px) {
+/* 0910 補:手機橫向時螢幕寬度常常超過 768px(例如轉橫的手機寬 844px)
+   ⇒ 原本只認寬度的斷點在橫向會整個失效,面板改回桌機版(固定小卡、沒有收起按鈕),
+   使用者反映「展開與收起會有時 DISABLE」——其實是橫向時那顆鈕直接消失(display:none),
+   不是真的被 disabled,但體感一樣按不到。改成寬度或矮螢幕(橫向手機)任一條件成立就算手機版。 */
+@media (max-width: 768px), (max-height: 500px) {
   .ui-overlay {
     top: 0;
     left: 0;
