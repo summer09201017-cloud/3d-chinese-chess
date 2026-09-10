@@ -126,5 +126,11 @@ console.log('\n── ④ 橫式棋盤要比姊妹站(3D-Xiangqi/xiangqi-arena)�
   ok(worst >= 0.9, '★ 而且真的「貼近」了,不是換公式换假的(至少佔滿 90%)', `worst=${worst.toFixed(3)}`);
 }
 
+console.log('\n── ⑤ 俯角是 75 度(2026-09-10 使用者:「重置視角還需要朝上順時鐘再轉30度」)──');
+{
+  const elevationDeg = Math.atan2(DIR_3D[1], DIR_3D[2]) * 180 / Math.PI;
+  ok(Math.abs(elevationDeg - 75) < 0.5, `★ DIR_3D 俯角是 75°(量到 ${elevationDeg.toFixed(1)}°)`);
+}
+
 console.log(`\n${fail === 0 ? '🟢' : '🔴'} fit:${pass} 過 / ${fail} 失敗`);
 process.exit(fail ? 1 : 0);

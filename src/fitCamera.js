@@ -33,7 +33,14 @@ const norm = (a) => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / 
 
 /** 兩個標準方向(取代原本三處寫死的座標)。2D 是幾乎正上方,留一點 z 避開萬向鎖。 */
 export const DIR_2D = norm([0, 1, 0.001]);
-export const DIR_3D = norm([0, 1, 1]);      // 45° 俯角,和原本 (0,10,10) 同一個角度
+/* 2026-09-10 使用者:「重置視角還需要朝上順時鐘再轉 30 度」——從原本 45° 俯角加 30°
+   變成 75°(更接近正上方)。順手解決了另一條反映:「後排黑色棋子的字太小,看不清楚」——
+   文字是平貼在棋子頂面朝上的(rotation={[-Math.PI/2,0,0]}),45° 斜看時越遠的那排字
+   被壓得越扁;角度越接近正上方,近排跟遠排的字被壓扁的程度差距越小,遠排字自然變清楚。
+   ⚠ 角度變陡,「剛好不裁切」需要的距離也會跟著變(横式螢幕變長,直向螢幕反而變短
+   ——見下面 fitCamera 橫式那段的 margin 為什麼跟著調),不是純粹的「棋盤變大」,
+   是「用同一份安全鐵則,換一個角度重新算」。 */
+export const DIR_3D = norm([0, Math.tan((75 * Math.PI) / 180), 1]);   // 75° 俯角
 
 /**
  * 算「要退多遠才裝得下整張棋盤」。
@@ -121,7 +128,11 @@ export function fitCamera(camera, controls, { is2D, aspect, scale = 1, keepDirec
     const boardHFlat = BOARD.halfZ * 2 * scale;
     const distForH = (boardHFlat / 2) / Math.tan(halfFovFlat);
     const distForW = (boardWFlat / 2) / Math.tan(halfFovFlat) / aspect;
-    d = Math.max(distForH, distForW) * 1.04;
+    /* ⚠ 2026-09-10 俯角從 45° 改到 75° 之後,這個 margin 從 1.04 補到 1.10——
+       角度變陡,8 角精算法量到的「剛好不裁切」距離在橫式螢幕會跟著變長(844×390 從
+       12.47 變 13.14,漲了約 5%),這裡的簡化公式如果還沿用舊 margin 會變得不夠安全。
+       1.10 是量過 75° 角、多種橫式尺寸後留的餘裕,不是隨手調的數字。 */
+    d = Math.max(distForH, distForW) * 1.10;
   } else {
     d = requiredDistance({ fovDeg: camera.fov, aspect, dir, scale });
   }
