@@ -117,8 +117,8 @@ console.log('\n── ③ 🎥 相機俯角「設了要真的生效」(不是只
     null, { timeout: 20000 }).catch(() => {});
   const elev = await page.evaluate(() => window.__anchess.camElevation);
   ok(elev !== null, '量得到相機的實際俯角', String(elev));
-  ok(elev !== null && Math.abs(elev - 75) < 1.5,
-    '★★ 實際渲染出來的俯角就是設定的 75°(沒有被 OrbitControls 的 minPolarAngle 夾掉)',
+  ok(elev !== null && Math.abs(elev - 62) < 1.5,
+    '★★ 實際渲染出來的俯角就是設定的 62°(沒有被 OrbitControls 的 minPolarAngle 夾掉)',
     '量到 ' + (elev === null ? 'null' : elev.toFixed(1) + '°'));
   await page.close();
 }

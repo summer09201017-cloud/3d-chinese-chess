@@ -126,10 +126,55 @@ console.log('\n── ④ 橫式棋盤要比姊妹站(3D-Xiangqi/xiangqi-arena)�
   ok(worst >= 0.9, '★ 而且真的「貼近」了,不是換公式换假的(至少佔滿 90%)', `worst=${worst.toFixed(3)}`);
 }
 
-console.log('\n── ⑤ 俯角是 75 度(2026-09-10 使用者:「重置視角還需要朝上順時鐘再轉30度」)──');
+console.log('\n── ⑤ 俯角是 62 度(2026-09-10 使用者:「重置視角還需要朝上順時鐘再轉30度」)──');
 {
   const elevationDeg = Math.atan2(DIR_3D[1], DIR_3D[2]) * 180 / Math.PI;
-  ok(Math.abs(elevationDeg - 75) < 0.5, `★ DIR_3D 俯角是 75°(量到 ${elevationDeg.toFixed(1)}°)`);
+  ok(Math.abs(elevationDeg - 62) < 0.5, `★ DIR_3D 俯角是 62°(量到 ${elevationDeg.toFixed(1)}°)`);
+}
+
+console.log('\n── ⑥ 橫式棋盤至少要跟姊妹站一樣寬(2026-09-10 使用者的原話)──');
+{
+  /* 使用者:「3d-chinese-chess 橫式棋盤要更寬,至少跟 3d-xiangqi.pages.dev 與
+     incandescent-stroopwafel-31007a 一樣寬」。
+     ★ 這裡用**同一套投影數學**去算兩邊「最靠近鏡頭那一排的螢幕跨距」——
+       不用截圖比對:兩站棋盤顏色不同,顏色偵測會被版本徽章之類的亮色污染,
+       0910 就是這樣一度量出 53.8%(實際 46.8%)害我追錯方向。
+     姊妹站(3D-Xiangqi / xiangqi-arena 同一份 renderer):
+       SQUARE_SIZE_X=10、SQUARE_SIZE_Y=8.5、棋盤 90×85、俯角 atan(90/60)=56.3°、
+       fit = max(distForH, distForW) × 1.02 × 1.06(boardW/H 各多留半格)。 */
+  const W = 844, H = 390, aspect = W / H, tanV = Math.tan((45 * Math.PI) / 180 / 2);
+  const tanH = tanV * aspect;
+  const nrm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const sb = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  /** 最靠近鏡頭那一排(最底線)的左右跨距,佔畫面寬的 % */
+  const frontSpanPct = (boardW, boardD, dist, elevDeg) => {
+    const dir = nrm([0, Math.tan((elevDeg * Math.PI) / 180), 1]);
+    const cam = [dir[0] * dist, dir[1] * dist, dir[2] * dist];
+    const fwd = nrm(sb([0, 0, 0], cam));
+    const right = nrm(cr(fwd, [0, 1, 0]));
+    const px = (p) => { const v = sb(p, cam); return dt(v, right) / (dt(v, fwd) * tanH); };
+    const hx = (boardW / 2) * (8 / 9), zF = (boardD / 2) * (9 / 10);
+    return (Math.abs(px([hx, 0, zF]) - px([-hx, 0, zF])) / 2) * 100;
+  };
+
+  const SX = 10, SY = 8.5, BW = 9 * SX, BH = 10 * SY;
+  const refDist = Math.max(((BH + SY * 0.5) / 2) / tanV, ((BW + SX * 0.5) / 2) / tanV / aspect) * 1.02 * 1.06;
+  const refSpan = frontSpanPct(BW, BH, refDist, Math.atan2(90, 60) * 180 / Math.PI);
+
+  const fake = {
+    fov: 45, aspect, position: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+    updateProjectionMatrix() {},
+  };
+  const oursDist = fitCamera(fake, { target: { x: 0, y: 0, z: 0 }, maxDistance: 25, update() {} },
+    { is2D: false, aspect, scale: 1.0 });
+  const oursElev = Math.atan2(DIR_3D[1], DIR_3D[2]) * 180 / Math.PI;
+  const oursSpan = frontSpanPct(BOARD.halfX * 2, BOARD.halfZ * 2, oursDist, oursElev);
+
+  ok(oursSpan >= refSpan,
+    `★★ 橫式底排寬 ${oursSpan.toFixed(1)}% ≥ 姊妹站的 ${refSpan.toFixed(1)}%(使用者的驗收標準)`,
+    `ours=${oursSpan.toFixed(2)} ref=${refSpan.toFixed(2)}`);
 }
 
 console.log(`\n${fail === 0 ? '🟢' : '🔴'} fit:${pass} 過 / ${fail} 失敗`);

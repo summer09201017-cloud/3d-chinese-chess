@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { fitCamera as applyFit } from './fitCamera';
+import { gridToWorld, worldToGrid } from './boardLayout.js';
 
 /* 📝 改版簡歷的文案用 `**粗體**` 標重點,但這裡是 React 的 `{c.text}` = **純文字**
      ⇒ 星號會原封不動印在畫面上(0909 實查:v2 那則從上線就這樣,而且
@@ -85,8 +86,7 @@ import { VERSION, DATE, CHANGELOG } from './version';
    撞色的話提示跟合法目標在畫面上分不出來,提示就白給。
    起點畫**空心環**(圈住那顆棋,不擋住它的字)、終點畫**實心盤**(要去的地方)。 */
 export function HintIndicator({ x, y, kind }) {
-  const px = x - 4;
-  const pz = y - 4.5;
+  const [px, pz] = gridToWorld(x, y);
   return (
     <mesh position={[px, 0.06, pz]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
       {kind === 'from'
@@ -98,8 +98,7 @@ export function HintIndicator({ x, y, kind }) {
 }
 
 export function ValidMoveIndicator({ x, y, onClick }) {
-  const px = x - 4;
-  const pz = y - 4.5;
+  const [px, pz] = gridToWorld(x, y);
   return (
     <mesh position={[px, 0.05, pz]} rotation={[-Math.PI / 2, 0, 0]} onClick={onClick}>
       <circleGeometry args={[0.2, 32]} />
@@ -307,10 +306,11 @@ function App() {
 
   const handleBoardClick = (evt) => {
     if (!selectedPiece) return;
-    // We scaled the group by 1.2, so divide world point by 1.2
-    const localPoint = evt.point;
-    const nx = Math.round(localPoint.x / 1.2 + 4);
-    const nz = Math.round(localPoint.z / 1.2 + 4.5);
+    /* 世界座標 → 格座標。⚠ 這裡原本寫死 `/1.2`(桌機那一檔的 group scale),
+       手機是 1.0 ⇒ 點空格會算到隔壁格(既有 bug,2026-09-10 一併修掉)。
+       縮放與行距一律交給 boardLayout.worldToGrid,和畫格線/擺棋子共用同一組數字。 */
+    const scale = isMobile ? 1.0 : 1.2;
+    const [nx, nz] = worldToGrid(evt.point.x, evt.point.z, scale);
     tryMove(selectedPiece, [nx, nz]);
   };
 

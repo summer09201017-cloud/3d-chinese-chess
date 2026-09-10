@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
+import { gridToWorld, PIECE_R_TOP, PIECE_R_MID, PIECE_R_BASE } from '../boardLayout.js';
 
 function getPieceDetails(type) {
     const isRed = type >= 'A' && type <= 'Z';
@@ -33,10 +34,8 @@ const BOTTOM = { normal: '#4CAF50', selected: '#2e7d32', capturable: '#c62828' }
 export function Piece({ x, y, type, selected, capturable, onClick }) {
     const { isRed, label } = getPieceDetails(type);
 
-    // Board coordinates: x in [0, 8], y in [0, 9]
-    // Map x to [-4, 4], y to [-4.5, 4.5] for Three.js centering
-    const px = x - 4;
-    const pz = y - 4.5; // Z acts as Y in 3D ground plane
+    /* 座標一律走 boardLayout(2026-09-10 行距改 0.85 之後,寫死 `y - 4.5` 會跟格線錯開) */
+    const [px, pz] = gridToWorld(x, y);
     const py = 0.25; // Height above board
 
     const color = isRed ? '#e63946' : '#1d3557';
@@ -46,13 +45,13 @@ export function Piece({ x, y, type, selected, capturable, onClick }) {
         <group position={[px, py, pz]} onClick={onClick}>
             {/* Top Half */}
             <mesh castShadow receiveShadow position={[0, 0.05, 0]}>
-                <cylinderGeometry args={[0.4, 0.42, 0.15, 32]} />
+                <cylinderGeometry args={[PIECE_R_TOP, PIECE_R_MID, 0.15, 32]} />
                 <meshStandardMaterial color={TOP[state]} />
             </mesh>
 
             {/* Bottom Half (Green / 選中深綠 / 吃得到深紅) */}
             <mesh position={[0, -0.1, 0]}>
-                <cylinderGeometry args={[0.42, 0.45, 0.15, 32]} />
+                <cylinderGeometry args={[PIECE_R_MID, PIECE_R_BASE, 0.15, 32]} />
                 <meshStandardMaterial color={BOTTOM[state]} />
             </mesh>
 
