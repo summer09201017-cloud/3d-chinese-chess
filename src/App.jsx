@@ -22,6 +22,14 @@ const richText = (t) => String(t).split('**').map((seg, i) => (i % 2 ? <b key={i
         (留一顆按了沒反應的鈕,比沒有鈕更糟)。
    ⚠⚠ **不可以用 `/line/i` 比對** —— "offline"、"Baseline"、"inline" 都會中,要用 `\bLine\/`。
    ★ 模組層只算一次:UA 在一個分頁裡不會變,放進 render 只是每幀重算同一個答案。 */
+/* 🖐 觸控裝置?(2026-09-10 使用者:「棋盤旋轉太快太靈敏」)
+   ★ `pointer: coarse` 是**裝置能力**,不是視窗寬度——Playwright 用 setViewportSize
+     改不出來,要驗這條得另開 hasTouch 的 context(姊妹站 0909 踩過這個坑)。
+   ★ 模組層只算一次:同一個分頁裡輸入裝置不會變,放進 render 只是每幀重算同一個答案。 */
+const IS_COARSE_POINTER = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(pointer: coarse)').matches;
+
 const IN_APP = (() => {
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   if (/\bLine\//i.test(ua) || /\bLIFF\b/i.test(ua)) return { n: 'LINE', m: '右上角「⋯」→「用其他瀏覽器開啟」' };
@@ -221,6 +229,16 @@ function App() {
         return p ? Math.hypot(p.x, p.y, p.z) : null;
       },
       get camFov() { return controlsRef.current?.object?.fov ?? null; },
+      /* 0910 補:相機的**實際**俯角(度)。fitCamera 設的角度會被 OrbitControls 的
+         min/maxPolarAngle 夾住 —— 設了不代表生效,一定要量真的。 */
+      /* 0910 補:實際生效的旋轉靈敏度(觸控應該是 0.4、滑鼠 1.0)。
+         同樣是「設了不代表生效」那一族 —— 要量 controls 上真正的值。 */
+      get rotateSpeed() { return controlsRef.current?.rotateSpeed ?? null; },
+      get camElevation() {
+        const p = controlsRef.current?.object?.position;
+        if (!p) return null;
+        return (Math.atan2(p.y, Math.hypot(p.x, p.z)) * 180) / Math.PI;
+      },
     };
   });
 
@@ -565,11 +583,22 @@ function App() {
             </>
           )}
         </group>
+        {/* ⚠⚠ minPolarAngle 會把 fitCamera 設的俯角**夾住**(極角 = 90° − 俯角)。
+              2026-09-10 實錘:這裡原本是 Math.PI/6(30° 極角 = 俯角上限 60°),
+              而 fitCamera 設的是 75° ⇒ 實際渲染出來量到 60.0°,使用者看到的是被夾過的角度,
+              測試卻只斷言「常數寫了 75」所以全綠。改俯角時這一行一定要一起看。
+              現在放寬到 5° 極角(= 俯角上限 85°),容得下 DIR_3D_ELEVATION_DEG=82,
+              也還留一點手動再轉陡的空間;不設 0 是為了離正上方的萬向鎖遠一點。
+            🖐 rotateSpeed:預設 1.0 在手機上太快(使用者:「棋盤旋轉太快太靈敏」)——
+              旋轉量 = 2π × 拖曳像素 ÷ 容器高 × rotateSpeed,直向手機劃 150px 就轉掉 64°。
+              觸控裝置降到 0.4(跟姊妹站 3D-Xiangqi / xiangqi-arena 同一個值,那邊實測
+              150px 從 64° 降到 25°);滑鼠維持 1.0,桌機按著拖有精度,一起調慢反而難用。 */}
         <OrbitControls
           ref={controlsRef}
           enablePan={false}
           enableRotate={true}
-          minPolarAngle={is2D ? 0.01 : Math.PI / 6}
+          rotateSpeed={IS_COARSE_POINTER ? 0.4 : 1.0}
+          minPolarAngle={is2D ? 0.01 : Math.PI / 36}
           maxPolarAngle={is2D ? 0.01 : Math.PI / 2.5}
           minDistance={5}
           maxDistance={25}

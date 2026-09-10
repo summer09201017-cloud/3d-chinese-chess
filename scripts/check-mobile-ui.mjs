@@ -103,7 +103,46 @@ console.log('\n── ② 🎥 轉向之後按「重置視角」,相機比例要
   await page.close();
 }
 
-console.log('\n── ③ 🔄 更新鈕(手機沒有下拉重新整理可用)──');
+console.log('\n── ③ 🎥 相機俯角「設了要真的生效」(不是只寫在常數裡)──');
+{
+  /* ⚠⚠ 2026-09-10 實錘:fitCamera 把俯角設成 75°,但 OrbitControls 的
+     `minPolarAngle={Math.PI/6}`(30° 極角 = 俯角上限 60°)把它夾成 60.0°,
+     使用者看到的一直是 60°;而 test/fit.mjs 只斷言「常數寫了 75」所以全綠 ——
+     那是在測「我寫了什麼」,不是「畫出來什麼」。這條才是真的守門:
+     開真瀏覽器、量 controls 上那台相機的實際位置換算出來的俯角。 */
+  const page = await open(PHONE_LANDSCAPE);
+  /* ⚠ camElevation 讀的是 OrbitControls 掛上來的相機,比 canvas 晚一拍才有
+       ⇒ 要等它非 null 再讀(跟②那條同一個坑)。 */
+  await page.waitForFunction(() => window.__anchess && window.__anchess.camElevation !== null,
+    null, { timeout: 20000 }).catch(() => {});
+  const elev = await page.evaluate(() => window.__anchess.camElevation);
+  ok(elev !== null, '量得到相機的實際俯角', String(elev));
+  ok(elev !== null && Math.abs(elev - 75) < 1.5,
+    '★★ 實際渲染出來的俯角就是設定的 75°(沒有被 OrbitControls 的 minPolarAngle 夾掉)',
+    '量到 ' + (elev === null ? 'null' : elev.toFixed(1) + '°'));
+  await page.close();
+}
+
+console.log('\n── ④ 🖐 手機轉棋盤不要太靈敏(觸控 0.4、滑鼠維持 1.0)──');
+{
+  /* 使用者:「棋盤旋轉太快太靈敏」。旋轉量 = 2π × 拖曳像素 ÷ 容器高 × rotateSpeed,
+     預設 1.0 在直向手機劃 150px 就轉掉 64°。
+     ⚠ `pointer: coarse` 是**裝置能力**,setViewportSize 改不出來 ——
+       一定要另開 hasTouch 的 context,不然這條永遠量到桌機那一邊(姊妹站 0909 踩過)。 */
+  for (const [label, hasTouch, want] of [['觸控裝置', true, 0.4], ['桌機滑鼠', false, 1.0]]) {
+    const ctx = await browser.newContext({ viewport: PHONE_LANDSCAPE, hasTouch, isMobile: hasTouch });
+    const p = await ctx.newPage();
+    await p.goto(URL + '?v=' + Date.now(), { waitUntil: 'domcontentloaded' });
+    await p.waitForSelector('canvas', { timeout: 20000 });
+    await p.waitForFunction(() => window.__anchess && window.__anchess.rotateSpeed !== null,
+      null, { timeout: 20000 }).catch(() => {});
+    const got = await p.evaluate(() => window.__anchess.rotateSpeed);
+    ok(got === want, `★ ${label} 的 rotateSpeed = ${want}`, '量到 ' + got);
+    await ctx.close();
+  }
+}
+
+console.log('\n── ⑤ 🔄 更新鈕(手機沒有下拉重新整理可用)──');
 {
   const page = await open(PHONE_PORTRAIT);
   const refresh = page.locator('button', { hasText: '更新' });

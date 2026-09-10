@@ -40,7 +40,19 @@ export const DIR_2D = norm([0, 1, 0.001]);
    ⚠ 角度變陡,「剛好不裁切」需要的距離也會跟著變(横式螢幕變長,直向螢幕反而變短
    ——見下面 fitCamera 橫式那段的 margin 為什麼跟著調),不是純粹的「棋盤變大」,
    是「用同一份安全鐵則,換一個角度重新算」。 */
-export const DIR_3D = norm([0, Math.tan((75 * Math.PI) / 180), 1]);   // 75° 俯角
+/* 2026-09-10 使用者最後拍板 75°。★ 這個數字之前「設了沒生效」——被 OrbitControls 的
+   minPolarAngle 夾成 60°(見下面那段警告),所以使用者看到的一直不是 75°。
+   這一輪把 App.jsx 的夾角放寬到 5° 極角(俯角上限 85°),75° 才真的畫得出來。 */
+export const DIR_3D_ELEVATION_DEG = 75;
+export const DIR_3D = norm([0, Math.tan((DIR_3D_ELEVATION_DEG * Math.PI) / 180), 1]);
+
+/* ⚠⚠ 2026-09-10 血淋淋的教訓:這個角度設了**不代表生效**。
+   OrbitControls 的 `minPolarAngle` 會把相機的極角夾住(極角 = 90° − 俯角),
+   App.jsx 原本寫 `minPolarAngle={Math.PI/6}`(30° 極角 = 俯角最多 60°)
+   ⇒ 我上一輪把這裡設成 75°,實際渲染出來量到的是 **60.0°**,使用者看到的是被夾過的角度,
+     而 test/fit.mjs 只斷言「常數是 75」所以全綠 —— 測到的是「我寫了什麼」不是「畫出來什麼」。
+   ⇒ 改這個角度時**一定要同步檢查 App.jsx 的 minPolarAngle 容不容得下**,
+     並且用 scripts/check-mobile-ui.mjs 那條真瀏覽器斷言量 `window.__anchess.camElevation`。 */
 
 /**
  * 算「要退多遠才裝得下整張棋盤」。
