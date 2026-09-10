@@ -150,6 +150,54 @@ function App() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
+  /* 🔄 拿新版(0910 使用者實機退件:「在手機無法用手指下滑,來重新整理成為最新版」)。
+       ★ 為什麼不去「把下拉更新打開」:本站 body/#root 是 `height:100vh; overflow:hidden`,
+         整個視窗讓給 3D 棋盤。瀏覽器的下拉更新只在「文件本身可捲動且捲到最頂」時才會觸發,
+         要打開它就得讓頁面可捲 —— 那樣手指拖棋盤轉視角時會整頁跟著捲,換一個更糟的病。
+         ⇒ 正解是「不必下拉也會拿到新版」:①自動偵測 ②畫面上給一顆看得到的更新鈕。
+       ★ SW 是 registerType:'autoUpdate'(skipWaiting + clientsClaim)⇒ 新版一裝好就接管,
+         但**接管不等於畫面換新**:目前這個分頁還是舊的那份 JS/CSS,一定要 reload 才會換。
+         ⇒ 這裡聽 controllerchange(新 SW 接管的那一刻)自動 reload 一次。
+       ⚠ reload 迴圈是這個作法的經典坑:reloaded 這個旗標保證每次載入最多只自動重整一次。 */
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    let reloaded = false;
+    const onControllerChange = () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
+    /* 主動問「有沒有新版」:剛打開時問一次、每次從背景切回前景再問一次
+       (手機使用者幾乎不關分頁,只切走再切回來 ⇒ 沒有這一條就永遠不會去問)。 */
+    const check = () => navigator.serviceWorker.getRegistration()
+      .then((reg) => reg && reg.update())
+      .catch(() => { /* 拿新版失敗不可以影響下棋 */ });
+    check();
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(check, 30 * 60 * 1000);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+  }, []);
+
+  /* 🔄 手動更新鈕:等同「下拉重新整理」,但不需要頁面可捲。
+       先叫 SW 去抓一次新版再 reload —— 只 reload 的話,拿到的還是快取裡那份舊的。 */
+  const forceRefresh = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      }
+    } catch { /* 沒 SW / 離線也要能重整,往下走 */ }
+    window.location.reload();
+  };
+
   /* 🔬 冒煙驗收的把手 —— **只讀**,不改任何遊戲行為。
      沒有 deps 陣列是刻意的:每次 render 都換上最新的一份,
      測試才不會抓到上一輪的 hint。 */
@@ -159,6 +207,14 @@ function App() {
       get hint() { return hint; },
       get thinking() { return hintThinking; },
       get selected() { return selectedPiece; },
+      /* 🎥 相機的長寬比 vs 畫布真正的長寬比 —— 0910「重置視角把棋盤壓扁」那個 bug 的量法:
+         病發時 camera.aspect 會停在轉向**之前**的舊值,和畫布現在的比例對不上,畫面就被拉扁。
+         兩個都讀得到,測試才問得出「它們一不一致」(只看畫面截圖看不出是哪一邊錯)。 */
+      get camAspect() { return controlsRef.current?.object?.aspect ?? null; },
+      get canvasAspect() {
+        const c = document.querySelector('canvas');
+        return c ? c.clientWidth / Math.max(1, c.clientHeight) : null;
+      },
     };
   });
 
@@ -433,6 +489,8 @@ function App() {
               <button onClick={saveGame}>存檔 (Save)</button>
               <button onClick={loadGame}>讀檔 (Load)</button>
               <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
+              {/* 🔄 手機上沒有下拉更新可用(整個視窗給了棋盤、頁面不可捲)⇒ 用這顆代替。 */}
+              <button onClick={forceRefresh} style={{ background: '#009688' }} title="抓取最新版本並重新整理">🔄 更新 (Refresh)</button>
               {/* 📱 內建瀏覽器(LINE/FB/IG/微信)裡裝不了 ⇒ 不留一顆按了沒反應的鈕,
                      直接換成「怎麼換瀏覽器」的一句話(見上面 IN_APP 那段的三條分寸)。 */}
               {IN_APP ? (

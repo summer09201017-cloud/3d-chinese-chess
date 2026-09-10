@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/clean-dist.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node test/ai.mjs && node test/version.mjs && node test/legality.mjs && node test/fit.mjs",
     "check": "node scripts/browser-check.mjs",
+    "check:mobile": "node scripts/check-mobile-ui.mjs",
     "serve": "node scripts/serve-dist.mjs",
     "deploy": "node scripts/deploy-all.mjs"
   },
