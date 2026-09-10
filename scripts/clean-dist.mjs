@@ -12,13 +12,17 @@
  *      **一度誤判是外掛的鍋** —— 其實那幾次我順手把 outDir 改成了新目錄名,那才是差別。
  *   ④ 原封不動的設定檔 + `outDir: dist-test5`(新目錄)⇒ 成功。
  *      ⇒ 觸發條件是「**dist/ 已經存在**」:存在就崩、不存在就過,連跑三輪 127/0/127。
- *   ⑤ 再往下挖:崩潰的其實**不是 Vite**,是「刪掉 dist/」這個動作本身 ——
- *      `node -e "fs.rmSync('dist',{recursive:true,force:true})"` 直接讓 node 當場崩潰,
- *      而同一支 rmSync 刪別的暫存目錄完全正常。逐檔測:dist/ 底下**每一個** entry
+ *   ⑤ 再往下挖:崩潰的其實**不是 Vite**,是「用 node 刪掉 dist/」這個動作本身 ——
+ *      `fs.rmSync('dist',{recursive:true,force:true})` 直接讓 node 當場崩潰,
+ *      而同一支 rmSync 刪別的暫存目錄當時完全正常。逐檔測:dist/ 底下**每一個** entry
  *      (連 134 bytes 的 registerSW.js)都會讓 node 崩潰 ⇒ 不是某個檔壞掉,
- *      是有東西掛在這條路徑上盯著 node.exe(這台裝了 PC-cillin,防勒索的資料夾保護
- *      就是這個症狀:不是回 EPERM,而是把行程打掛)。
- *   ⑥ Git Bash 的 `rm -rf dist` 與 Windows 的 `rmdir /s /q dist` **都刪得掉** ⇒ 用它們繞過。
+ *      是**這台機器上 node.exe 的刪除路徑**被某個檔案系統過濾驅動干擾(典型是防毒/防勒索;
+ *      這台裝了 PC-cillin)。
+ *   ⑥ Git Bash 的遞迴刪除與 Windows 的 `rmdir /s /q` **都刪得掉** ⇒ 用它們繞過。
+ *   ⑦ ⚠ **不要以為「關掉防毒就好」——0910 當場試過,反而更糟**:使用者把 PC-cillin 關掉之後,
+ *      原本只有 dist/ 會崩,變成連「剛剛新建的空目錄」都會把 node 打掛(推測是保護被停掉、
+ *      過濾驅動卻還掛著的半殘狀態)。⇒ 正確的處置是**開回防毒 + 重開機**,
+ *      真的還會咬就給開發資料夾加「排除」,而不是裸奔。無論如何本檔這個繞法都不受影響。
  *
  * ★ 所以這支的作法:Windows 走 `rmdir /s /q`(避開會被打掛的 node fs 刪除路徑),
  *   其他平台走 fs.rmSync。刪完一定回頭確認真的不見了,不見了才讓 build 繼續 ——
