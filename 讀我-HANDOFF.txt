@@ -1,8 +1,35 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-07(HFP 機・Opus 5・session 0906-3D西洋棋棋字名)
-      🎯 💡 提示不再建議「等價/虧本交換」(PST 位置分 + 葉子靜態搜尋 + 提示兩道關卡)
+更新:2026-09-10(agape250 機・Sonnet 5)🗂 展開/收起手機橫向消失 + 🎥 重置視角轉向後棋盤變扁
+      (原始碼已修好、已推上 GitHub;⚠ 本機 npm run build 崩潰,**尚未部署**,見下方 ★ 段)
 ============================================================
+
+★★★★★ 2026-09-10(agape250 機・Sonnet 5)🗂 展開/收起手機橫向消失 + 🎥 重置視角轉向後棋盤變扁 🟡 已推程式碼、未部署(aea45f7)★★★★★
+  由來:使用者拿當天早上的手機截圖體檢三站後,又親自到線上實測回報兩件:「展開與收起會有時
+       DISABLE」「橫向重置視角後,棋盤太扁,這角度看不到棋子,無法玩,建議朝上順時鐘轉45度或60度」。
+  ① 展開/收起有時 DISABLE(其實是消失,不是真的被鎖):src/index.css 的 `.panel-toggle` 只在
+     `@media (max-width:768px)` 顯示,手機轉橫向後寬度常超過 768px(例如 844px),斷點失效,
+     鈕直接 display:none —— 不是被鎖住,是根本沒畫出來。改成 `@media (max-width:768px),
+     (max-height:500px)`,寬螢幕或矮螢幕(橫向手機)任一成立就算手機版。
+  ② 重置視角轉向後變扁:src/App.jsx 的 `<FitCamera>` 裡,`fitRef.current`(「重置視角」鈕綁的
+     函式)以前只在 `useEffect(..., [camera, is2D])` 裡賦值 —— 轉向(width/height 變了但
+     camera/is2D 沒變)不會讓這個 effect 重跑,於是按鈕永遠綁著轉向**之前**那個閉包,裡面關住
+     的是舊的 width/height。按下重置視角時 `fitCamera()` 把 `camera.aspect` 強制寫回那個舊比例,
+     跟畫布現在真正的寬高對不上,畫面因此被拉扁。改成每次 render 後都刷新 `fitRef.current`。
+  ★ 使用者同時反映「AI 提示後點綠點沒反應,三款都有」——查證過**本站沒有**這個問題:
+    `showHint()` 本來就會 `setSelectedPiece(best.from)`(見該行註解「順手選起來」),點提示畫
+    的紫色終點走的是與一般走子相同的 `tryMove` 路徑,原本就走得動。這條只有姊妹站 3D-Xiangqi /
+    xiangqi-arena 真的有(那兩站的 paintHint 只畫視覺、沒有同步選取狀態),已在那兩個 repo 各自修好。
+  🏷 版本簡歷 v6 → v7(src/version.js),文案同步兩則改動。
+  測試:npm test(ai 11・version 34・legality 20・fit 19,全綠)。
+  🟡 部署:**這輪沒有部署**——`npm run build` 在這台機器(agape250)上會 native crash
+    (exit code -1073740791,Windows STATUS_STACK_BUFFER_OVERRUN 類的崩潰)。已用 git stash
+    驗過:對**原始未改動**的程式碼跑一樣崩潰 ⇒ 是這台機器既有的 Vite v8 / Rolldown 環境問題,
+    不是這輪改動造成的。程式碼已經 commit + push(GitHub 是新的),線上三個 CF Pages 專案
+    (3d-chinese-chess / 3dchinesechess / 3dchinese)還是**舊版 v6**,等環境問題排除或
+    換一台機器 build 之後記得補跑 `npm run deploy`(見「怎麼跑/測/部署」段)三站都要部署。
+  git 實況(交接前真的問過 git):status --short 空、HEAD aea45f7、rev-list @{u}..HEAD = 0
+    (程式碼已經在 origin 上,只有**線上網站**還沒更新)。
 
 ★★★★★ 2026-09-07 🎯 提示品質大修 ✅ 已上線(fc45626;三個 CF 專案都部署了)★★★★★
 
