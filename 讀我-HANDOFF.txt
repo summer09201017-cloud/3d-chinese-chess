@@ -1,10 +1,41 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-10(agape250 機・Sonnet 5)🗂 展開/收起手機橫向消失 + 🎥 重置視角轉向後棋盤變扁
-      (原始碼已修好、已推上 GitHub;⚠ 本機 npm run build 崩潰,**尚未部署**,見下方 ★ 段)
+更新:2026-09-10(agape250 機・Opus 5)🔄 手機不必下滑也能拿到新版 + 🧹 修好本機 build 崩潰
+      (v8,三站都已部署、線上驗過:指紋 index-u7t7d5Bv.js)
 ============================================================
 
-★★★★★ 2026-09-10(agape250 機・Sonnet 5)🗂 展開/收起手機橫向消失 + 🎥 重置視角轉向後棋盤變扁 🟡 已推程式碼、未部署(aea45f7)★★★★★
+★★★★★ 2026-09-10(agape250 機・Opus 5)🔄 手機不必下滑也能拿到新版 + 🧹 修好本機 build 崩潰 ✅ 已上線(6637de8,v8)★★★★★
+  由來:使用者實機回報「在手機無法用手指下滑,來重新整理成為最新版」——他拿不到我們剛修好的版本。
+  ① 🔄 為什麼不去「把下拉更新打開」:本站 body/#root 是 `height:100vh; overflow:hidden`
+     (整個視窗讓給 3D 棋盤),而瀏覽器的下拉更新只在「文件可捲動且捲到頂」才會觸發 ⇒ 怎麼拉都沒反應。
+     要打開它就得讓頁面可捲,那樣手指拖棋盤轉視角會整頁跟著捲 —— 換一個更糟的病。
+     ⇒ 改成「不必下滑也拿得到新版」:按鈕列加一顆「🔄 更新」(先 reg.update() 再 reload;
+       只 reload 拿到的還是快取那份舊的)、聽 controllerchange 自動 reload 一次(reloaded 旗標防迴圈)、
+       開啟時 + 每次從背景切回前景 + 每 30 分鐘主動問一次有沒有新版
+       (手機使用者幾乎不關分頁、只切走再切回,沒有這條就永遠不會去問)。
+  ② 🧹 `npm run build` 本機原生崩潰(0xC0000409,**沒有任何錯誤訊息**)—— 完整查法寫在
+     `scripts/clean-dist.mjs` 檔頭,務必先讀那一段再動這裡。摘要:崩潰的不是 Vite、不是這輪改動
+     (git stash 後對原始碼跑一樣崩),是「用 node 刪掉 dist/」這個動作本身 ——
+     fs.rmSync 一碰 dist/ 底下任何 entry 就把整個行程打掛,而 Git Bash 的遞迴刪除與
+     `rmdir /s /q` 都刪得掉 ⇒ 新增 `prebuild` 腳本走 rmdir,刪完回頭確認真的不見了才讓 build 繼續。
+     ⚠⚠ **不要靠「關掉防毒」解決**:0910 當場試過,關掉 PC-cillin 之後**反而更糟**
+       (原本只有 dist/ 會崩,變成連剛新建的空目錄都崩)⇒ 正解是開回防毒 + 重開機,
+       真的還會咬就給開發資料夾加排除。本站的 rmdir 繞法在哪一種狀態下都有效。
+  ③ 🔬 新增 `scripts/check-mobile-ui.mjs`(`npm run check:mobile`)守這輪三條退件:
+     橫向看得見「展開/收起」且按得動、轉向後按「重置視角」camera.aspect 要跟上畫布、
+     「🔄 更新」鈕在且不會重整迴圈。`window.__anchess` 加了唯讀的 camAspect / canvasAspect
+     (只看截圖分不出是相機錯還是畫布錯)。★ 突變驗過它咬得住:把 fitRef 修法退回舊寫法
+     ⇒ 量到 cam=0.462 vs canvas=2.164 當場紅。
+  測試:npm test(ai 11・version 38・legality 20・fit 19)、npm run check:mobile 11/0、
+    lint 前後同樣 6 項(都是既有的)。
+  部署:三站逐一 `npx wrangler pages deploy dist --project-name <名> --branch main --commit-dirty=true`,
+    指紋三站一致 index-u7t7d5Bv.js,線上抽驗過更新鈕 / controllerchange / v8 都在。
+    ⚠ `npm run deploy` 這輪跑不完:wrangler 上傳**成功之後**、行程收尾時被同一個
+      原生崩潰打斷,deploy-all.mjs 因此停在第一站 ⇒ 它停掉不代表前面那站沒上去,
+      看到「Deployment complete」就是上去了,剩下兩站逐一補推即可。
+  git 實況(交接前真的問過 git):status --short 空、HEAD eeb7d28、rev-list @{u}..HEAD = 0。
+
+★★★★★ 2026-09-10(agape250 機・Sonnet 5)🗂 展開/收起手機橫向消失 + 🎥 重置視角轉向後棋盤變扁 ✅ 已上線(aea45f7,隨 v8 一起部署)★★★★★
   由來:使用者拿當天早上的手機截圖體檢三站後,又親自到線上實測回報兩件:「展開與收起會有時
        DISABLE」「橫向重置視角後,棋盤太扁,這角度看不到棋子,無法玩,建議朝上順時鐘轉45度或60度」。
   ① 展開/收起有時 DISABLE(其實是消失,不是真的被鎖):src/index.css 的 `.panel-toggle` 只在
