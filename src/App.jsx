@@ -591,13 +591,13 @@ function App() {
               也還留一點手動再轉陡的空間;不設 0 是為了離正上方的萬向鎖遠一點。
             🖐 rotateSpeed:預設 1.0 在手機上太快(使用者:「棋盤旋轉太快太靈敏」)——
               旋轉量 = 2π × 拖曳像素 ÷ 容器高 × rotateSpeed,直向手機劃 150px 就轉掉 64°。
-              觸控裝置降到 0.4(跟姊妹站 3D-Xiangqi / xiangqi-arena 同一個值,那邊實測
+              觸控裝置降到 0.2(2026-09-10 使用者第二次反映「降靈敏都過高」,從 0.4 再砍半;那邊實測
               150px 從 64° 降到 25°);滑鼠維持 1.0,桌機按著拖有精度,一起調慢反而難用。 */}
         <OrbitControls
           ref={controlsRef}
           enablePan={false}
           enableRotate={true}
-          rotateSpeed={IS_COARSE_POINTER ? 0.4 : 1.0}
+          rotateSpeed={IS_COARSE_POINTER ? 0.2 : 1.0}
           minPolarAngle={is2D ? 0.01 : Math.PI / 36}
           maxPolarAngle={is2D ? 0.01 : Math.PI / 2.5}
           minDistance={5}

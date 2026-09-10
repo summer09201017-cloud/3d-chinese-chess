@@ -129,7 +129,7 @@ console.log('\n── ④ 🖐 手機轉棋盤不要太靈敏(觸控 0.4、滑�
      預設 1.0 在直向手機劃 150px 就轉掉 64°。
      ⚠ `pointer: coarse` 是**裝置能力**,setViewportSize 改不出來 ——
        一定要另開 hasTouch 的 context,不然這條永遠量到桌機那一邊(姊妹站 0909 踩過)。 */
-  for (const [label, hasTouch, want] of [['觸控裝置', true, 0.4], ['桌機滑鼠', false, 1.0]]) {
+  for (const [label, hasTouch, want] of [['觸控裝置', true, 0.2], ['桌機滑鼠', false, 1.0]]) {
     const ctx = await browser.newContext({ viewport: PHONE_LANDSCAPE, hasTouch, isMobile: hasTouch });
     const p = await ctx.newPage();
     await p.goto(URL + '?v=' + Date.now(), { waitUntil: 'domcontentloaded' });
