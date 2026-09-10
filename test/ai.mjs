@@ -187,5 +187,33 @@ console.log('── ③ 同局面按兩次給同一手 + AI 對手照舊能走 �
   }));
 }
 
+console.log('── ④ 黑方開局用「開局書」不會炸掉(2026-09-10 使用者實機退件三件的真因)──');
+{
+  /* 使用者反映:「炮走一步後黑方完全沒反應」「炮跟砲之間沒棋子卻變紅色」「黑方一次走兩步」——
+     三件事同一個真因:getBestMoveAlphaBeta 裡 `minimax` 宣告在檔案後段,但開局書那段
+     「安全檢查」(黑方開局前幾手才會走到)在宣告之前就先用了它 —— const 的暫存死區
+     (TDZ),每一次黑方用開局書都會丟 ReferenceError,而且丟出來之前 engine.move()
+     已經真的把測試手套用到共用的 engine 上、丟例外之後 undo 永遠不會執行,
+     一步「洩漏」出來的測試手就留在真正的盤面上,畫面因為例外中斷、react state 沒同步,
+     玩家螢幕看起來像「對手完全沒反應」;下一次任何操作觸發重繪就會冒出那顆「憑空多的棋子」。
+     ★ 這裡直接测紅方先動一手(讓 turn 真的變成黑方)之後,黑方用每一種開局書都要
+       **給得出合法一手、不拋例外、engine 的走法歷史長度剛好變成 2**(代表沒有洩漏測試手
+       殘留在 history 裡)。舊版這裡 100% 會炸 —— 這條測試要能證明「以前必炸,現在必過」。 */
+  for (const style of ['auto', 'cannon', 'screen_horse', 'elephant', 'pawn', 'none']) {
+    const e = new GameEngine();
+    e.move([4, 6], [4, 5]);   // 紅兵先動一手,換黑方走
+    const histBefore = e.history.length;
+    let move = null, threw = null;
+    try { move = getBestMoveAlphaBeta(e, 5, style); }
+    catch (err) { threw = err; }
+    ok(`openingStyle="${style}":黑方開局不拋例外`, !threw, threw ? threw.message : '');
+    ok(`openingStyle="${style}":給得出合法一手`,
+      !!move && e.getPieceMoves(move.from[0], move.from[1]).some((t) => t[0] === move.to[0] && t[1] === move.to[1]),
+      move ? show(move) : '(null)');
+    ok(`openingStyle="${style}":沒有洩漏未 undo 的測試手(history 長度沒變)`,
+      e.history.length === histBefore, `${e.history.length} vs ${histBefore}`);
+  }
+}
+
 console.log(`\n🔬 ai:${pass} 過 / ${fail} 失敗`);
 process.exit(fail ? 1 : 0);

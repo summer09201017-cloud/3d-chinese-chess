@@ -388,6 +388,24 @@ export function getBestMoveAlphaBeta(engine, difficulty, openingStyle = 'auto') 
     let alpha = -Infinity;
     let beta = Infinity;
 
+    /* 🐛 2026-09-10 使用者實機退件三件(黑方完全沒反應/一次走兩步/棋盤怪異變化)查出來的真因:
+       ★★★ `minimax` 原本宣告在檔案後段(第 472 行附近),但下面「開局書安全檢查」那段
+       (第 463 行左右)早就在用它了 —— `const` 有暫存死區(TDZ),同一函式作用域內在宣告
+       那一行**執行之前**引用會直接丟出 `ReferenceError: Cannot access 'minimax' before
+       initialization`,不是「有時候比較慢」,是**每一次**黑方開局前幾手用到開局書
+       都會炸(openingStyle 預設就是 'auto',幾乎每一局都會踩到)。
+       ⇒ 搬到這裡,在第一次被呼叫之前先宣告好。
+       ★ 更嚴重的連鎖後果:原本那段是 `engine.move(...)` 先真的把測試手套用到**同一個**
+       engine 物件上,`minimax(...)` 炸掉之後,**下面的 `engine.undo()` 永遠不會執行**
+       ——那一步就留在盤面上出不去了,而且例外一路往外炸到 makeAIMove(見 App.jsx),
+       畫面用的 `boardState`(React state)因為 syncBoard() 沒機會被呼叫到,完全沒有更新
+       ⇒ 玩家螢幕上看起來「黑方完全沒反應」,但 engine 內部其實已經多了一步「洩漏」出來
+       沒撤銷的測試手,turn 也可能因此對不上 —— 使用者下一步再任何操作觸發畫面重繪時,
+       就會看到這顆「憑空冒出來」的棋子,像是「黑方一次走了兩步」。
+       ⇒ 下面 try/finally 補一層防呆:就算以後這段又出了別的例外,undo 也一定會執行,
+       不會再把測試手洩漏到真正的盤面上。 */
+    const minimax = (currentDepth, maximizing, a, b) => searchAlphaBeta(engine, currentDepth, maximizing, a, b);
+
     // Opening Book logic for Black up to early game (First 2 full moves roughly equivalent to history <= 3)
     if (openingStyle !== 'none' && !isMaximizing && engine.history.length <= 3) {
         let targetMove = null;
@@ -459,17 +477,19 @@ export function getBestMoveAlphaBeta(engine, difficulty, openingStyle = 'auto') 
             const isValid = moves.some(m => m.from[0] === targetMove.from[0] && m.from[1] === targetMove.from[1] && m.to[0] === targetMove.to[0] && m.to[1] === targetMove.to[1]);
             if (isValid) {
                 // Verify move isn't suicidal (Wait 3 moves ahead)
+                // ⚠ try/finally:這裡曾經在 minimax 拋例外時漏掉 undo,把測試手永久留在盤面上
+                //   (見上面 0910 的長註解)。不管 minimax 順不順利,undo 一定要執行。
+                let safetyScore;
                 engine.move(targetMove.from, targetMove.to);
-                const safetyScore = minimax(3, true, -Infinity, Infinity);
-                engine.undo();
+                try {
+                    safetyScore = minimax(3, true, -Infinity, Infinity);
+                } finally {
+                    engine.undo();
+                }
                 if (safetyScore < 5000) return targetMove;
             }
         }
     }
-
-    /* 本地包裝:實作已抽到模組層的 searchAlphaBeta(提示也要用同一支)。
-       簽名刻意保持 (depth, maximizing, a, b),下面開局書與根層的呼叫一字不用改。 */
-    const minimax = (currentDepth, maximizing, a, b) => searchAlphaBeta(engine, currentDepth, maximizing, a, b);
 
     const moves = engine.getLegalMoves();
     if (moves.length === 0) return null;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { fitCamera as applyFit } from './fitCamera';
@@ -237,6 +238,25 @@ function App() {
         const p = controlsRef.current?.object?.position;
         if (!p) return null;
         return (Math.atan2(p.y, Math.hypot(p.x, p.z)) * 180) / Math.PI;
+      },
+      /* 🖱 格座標 → 螢幕像素(2026-09-10 補,查「炮吃炮沒有屏風」那批 bug 用)。
+         驗收腳本要用**真滑鼠點擊**(page.mouse.click)才會走到真正的 raycast onClick,
+         不能用 page.evaluate 直接呼叫函式繞過去 —— 那樣「畫面上點不到」這種病照樣全綠。
+         真滑鼠點擊需要真實螢幕像素,這裡借相機的投影矩陣算給它,不必在測試腳本裡
+         重寫一份透視投影(那份和 renderer 實際用的很容易兜不起來)。 */
+      screenPosFor(x, y) {
+        const cam = controlsRef.current?.object;
+        const c = document.querySelector('canvas');
+        if (!cam || !c) return null;
+        const scale = isMobile ? 1.0 : 1.2;
+        const [wx, wz] = gridToWorld(x, y);
+        const v = new THREE.Vector3(wx * scale, 0.25 * scale, wz * scale);
+        v.project(cam);
+        const rect = c.getBoundingClientRect();
+        return {
+          x: rect.left + ((v.x + 1) / 2) * rect.width,
+          y: rect.top + ((1 - v.y) / 2) * rect.height,
+        };
       },
     };
   });

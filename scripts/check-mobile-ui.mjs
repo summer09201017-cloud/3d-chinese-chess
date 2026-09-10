@@ -160,6 +160,50 @@ console.log('\n── ⑤ 🔄 更新鈕(手機沒有下拉重新整理可用)�
   await page.close();
 }
 
+console.log('\n── ⑥ 真的走一步棋,黑方要真的回應(2026-09-10 使用者實機退件:「炮走一步後黑方完全沒反應」+「黑方一次走兩步」)──');
+{
+  /* 真因:getBestMoveAlphaBeta 裡 `minimax` 宣告在後面,但黑方開局書那段安全檢查
+     (openingStyle 預設 'auto',幾乎每一局都會踩到)在宣告之前就先用了它 —— TDZ 例外。
+     丟例外之前 engine.move() 已經真的套用了測試手,例外一路炸出去,undo 永遠沒執行,
+     一步「洩漏」的棋子就黏在盤面上;react state 沒機會同步,玩家螢幕看起來像沒反應。
+     test/ai.mjs 已經在引擎層守住這個 TDZ + undo 洩漏;這裡補**真滑鼠點擊**的端對端版本,
+     因為使用者是在真的點擊互動裡發現的,引擎層測試證明不了「畫面上點了會不會動」。
+     ⚠ 一律用 window.__anchess.screenPosFor(x,y) 算真實螢幕像素再 page.mouse.click,
+       不能用 evaluate 直接呼叫函式繞過去 —— 那樣「點了但沒反應」這種病照樣全綠。 */
+  const page = await open(PHONE_LANDSCAPE);
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  const clickCell = async (x, y) => {
+    const pos = await page.evaluate(([px, py]) => window.__anchess.screenPosFor(px, py), [x, y]);
+    if (pos) await page.mouse.click(pos.x, pos.y);
+    return pos;
+  };
+  const countPieces = (board) => board.join('').split('').filter((c) => c !== '.').length;
+  const dump = () => page.evaluate(() => ({
+    turn: window.__anchess.engine.turn, board: window.__anchess.engine.board.map((r) => r.join('')),
+  }));
+
+  /* ⚠ camAspect 非 null 不代表 controlsRef.current(相機物件)也已經掛好——
+     screenPosFor 讀的是後者,兩者掛載時機差一拍,這裡要多等一次(跟②那條同一個坑)。 */
+  await page.waitForFunction(() => window.__anchess.screenPosFor(7, 7) !== null, null, { timeout: 10000 }).catch(() => {});
+
+  const before = await dump();
+  const p1 = await clickCell(7, 7);   // 右邊紅炮起手位置
+  ok(p1 !== null, '★ 算得出紅炮的螢幕座標(相機/棋盤都已就緒)');
+  await page.waitForTimeout(200);
+  await clickCell(7, 6);               // 走到正前方一格空格
+  await page.waitForTimeout(2500);     // 給 AI 開局書 + 搜尋足夠時間
+
+  const after = await dump();
+  ok(errors.length === 0, '★★ 走這一步不會噴任何 JS 例外(退件三件的共同真因)', errors.join(' | '));
+  ok(after.turn === 'w', '★ 黑方真的回應了(輪回紅方,不是卡在黑方那一手)', 'turn=' + after.turn);
+  ok(countPieces(after.board) === countPieces(before.board),
+    '★★ 棋子總數沒有憑空增減(沒有洩漏未 undo 的測試手殘留在盤面上)',
+    `${countPieces(before.board)} → ${countPieces(after.board)}`);
+  await page.close();
+}
+
 await browser.close();
 console.log('\n' + (fail === 0 ? '🟢' : '🔴') + ` mobile-ui:${pass} 過 / ${fail} 失敗\n`);
 process.exit(fail === 0 ? 0 : 1);
