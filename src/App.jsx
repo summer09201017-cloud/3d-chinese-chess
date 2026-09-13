@@ -129,7 +129,13 @@ export function ValidMoveIndicator({ x, y, onClick }) {
 function App() {
   const [engine] = useState(() => new GameEngine());
   const [boardState, setBoardState] = useState(engine.board);
-  const [selectedPiece, setSelectedPiece] = useState(null);
+  const [selectedPiece, setSelectedPieceState] = useState(null);
+  /* ★ 選中的棋子也要一份 ref(0913 線上驗收抓到的):棋盤 mesh 的 onClick 在 R3F 的另一個 root,
+       外層剛 setSelectedPiece 完、下一個點擊若在它換閉包之前進來(線上比本機慢一拍就會),
+       handleBoardClick 讀到的 selectedPiece 還是 null ⇒ 「選了俥、點目標格沒反應」。
+       handler 一律讀 ref,state 只管畫可走點。 */
+  const selectedPieceRef = useRef(null);
+  const setSelectedPiece = (v) => { selectedPieceRef.current = v; setSelectedPieceState(v); };
   const [difficulty, setDifficulty] = useState(2); // Depth 2 is fast, depth 3 is medium
   const [openingStyle, setOpeningStyle] = useState('auto'); // Opening book selection
   const [playerColor, setPlayerColor] = useState('w');
@@ -409,11 +415,11 @@ function App() {
     const isRed = p >= 'A' && p <= 'Z';
     const pColor = isRed ? 'w' : 'b';
 
-    if (pColor === engine.turn && engine.turn === playerColor) {
+    if (pColor === engine.turn && engine.turn === playerColorRef.current) {
       setSelectedPiece([x, y]);
-    } else if (selectedPiece) {
+    } else if (selectedPieceRef.current) {
       // Check if clicked to capture
-      tryMove(selectedPiece, [x, y]);
+      tryMove(selectedPieceRef.current, [x, y]);
     }
   };
 
@@ -424,8 +430,8 @@ function App() {
     const scale = isMobile ? 1.0 : 1.2;
     const [nx, nz] = worldToGrid(evt.point.x, evt.point.z, scale);
     if (editingRef.current) { editPlace(nx, nz); return; }
-    if (!selectedPiece) return;
-    tryMove(selectedPiece, [nx, nz]);
+    if (!selectedPieceRef.current) return;
+    tryMove(selectedPieceRef.current, [nx, nz]);
   };
 
   const tryMove = (from, to) => {
