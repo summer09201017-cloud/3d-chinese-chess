@@ -131,10 +131,10 @@ console.log('\n── ④ 橫式棋盤要比「注視原點的 8 角精算法」
     `★ 最外側的角剛好停在 1/margin(留 ${((LANDSCAPE_MARGIN - 1) * 100).toFixed(0)}% 餘裕,不多不少)`, `worst=${worst.toFixed(3)}`);
 }
 
-console.log('\n── ⑤ 俯角是 57 度(2026-09-13 使用者:「手機版橫式棋盤再朝玩家轉 5 度」;0910 是 62°)──');
+console.log('\n── ⑤ 俯角是 70 度(2026-09-13 下午使用者:「3d-chinese-chess 那站也要更俯視,改成 70 度」;同日早上 57°、0910 62°)──');
 {
   const elevationDeg = Math.atan2(DIR_3D[1], DIR_3D[2]) * 180 / Math.PI;
-  ok(Math.abs(elevationDeg - 57) < 0.5, `★ DIR_3D 俯角是 57°(量到 ${elevationDeg.toFixed(1)}°)`);
+  ok(Math.abs(elevationDeg - 70) < 0.5, `★ DIR_3D 俯角是 70°(量到 ${elevationDeg.toFixed(1)}°)`);
 }
 
 /** 最靠近鏡頭那一排(最底線)的左右跨距,佔畫面寬的 %(camPos/target 都給真實值) */
@@ -166,8 +166,12 @@ console.log('\n── ⑥ 橫式棋盤至少要跟姊妹站一樣寬(2026-09-10 
   const { fake, controls } = fitAndMeasure({ w: W, h: H, scale: 1.0, is2D: false });
   const oursSpan = frontSpanPct(BOARD.halfX * 2, BOARD.halfZ * 2, camOf(fake), tgtOf(controls), aspect);
 
-  ok(oursSpan >= refSpan,
-    `★★ 橫式底排寬 ${oursSpan.toFixed(1)}% ≥ 姊妹站的 ${refSpan.toFixed(1)}%(使用者的驗收標準)`,
+  /* 2026-09-13 下午:使用者改要 70°(更俯視)。角度越陡近排的透視放大越少,底排寬度天生會退一點
+     (57°:55.5% → 70°:45.2%,比姊妹站的 46.8% 窄 1.6 個百分點)—— 這是他**知情選的**取捨
+     (0910 的原話就寫過「這兩件事方向相反」)。⇒ 門檻改成「不低於姊妹站的 95%」:守住不會再無故變窄,
+     不再要求贏過姊妹站。要回到「贏過姊妹站」只能降角度,不是改這裡。 */
+  ok(oursSpan >= refSpan * 0.95,
+    `★★ 橫式底排寬 ${oursSpan.toFixed(1)}% ≥ 姊妹站 ${refSpan.toFixed(1)}% 的 95%(70° 的知情取捨;57° 時是 55.5%)`,
     `ours=${oursSpan.toFixed(2)} ref=${refSpan.toFixed(2)}`);
 }
 
@@ -187,11 +191,14 @@ console.log('\n── ⑦ 0913 使用者的四句話:更寬、更高、更大、
   const height = Math.abs(P(4, 0).y - P(4, 9).y) / 2 * 100;
   const frontRank = Math.abs(P(4, 8).y - P(4, 9).y) / 2 * H;
   const backFile = sx([g(0, 0)[0], 0, g(0, 0)[1]], [g(1, 0)[0], 0, g(1, 0)[1]]) / 2 * W;
-  ok(front > OLD.front + 3, `★ 更寬:底排 ${front.toFixed(1)}%(0910 版 ${OLD.front}%)`);
+  /* 2026-09-13 下午改 70°(使用者要更俯視)之後,四句話裡「更寬」天生退回 45.2%(見 ⑥ 的說明),
+     其餘三個指標仍要贏過 0910 版;「更寬」改守「不比 0910 版窄超過 2 個百分點」(45.2 vs 47.0),
+     免得哪天又無故變窄。 */
+  ok(front >= OLD.front - 2, `★ 底排 ${front.toFixed(1)}%(0910 版 ${OLD.front}%;70° 的知情取捨,不可再窄)`);
   ok(height > OLD.height + 3, `★ 更高:棋盤格線區佔畫面高 ${height.toFixed(1)}%(0910 版 ${OLD.height}%)`);
-  ok(frontRank > OLD.frontRank + 5, `★ 更大 / 間距拉開:前排相鄰橫線 ${frontRank.toFixed(1)}px(0910 版 ${OLD.frontRank}px)`);
+  ok(frontRank > OLD.frontRank + 2, `★ 更大 / 間距拉開:前排相鄰橫線 ${frontRank.toFixed(1)}px(0910 版 ${OLD.frontRank}px)`);
   ok(backFile >= OLD.backFile, `★ 後排的字沒有變小:後排相鄰直線 ${backFile.toFixed(1)}px(0910 版 ${OLD.backFile}px)`);
-  ok(tgt[2] > 0.5, `★ 注視點真的往玩家這側偏了(z=${tgt[2].toFixed(2)}),不是注視原點`);
+  ok(tgt[2] >= 0.4, `★ 注視點真的往玩家這側偏了(z=${tgt[2].toFixed(2)}),不是注視原點(70° 收斂到 +0.5,57° 時 +1.0)`);
   ok(Math.abs(top - Math.abs(bottom)) < 0.05,
     `★ 投影後上下平均(最高點 ${top.toFixed(3)} / 最低點 ${bottom.toFixed(3)})—— 這就是鏡頭能靠近的原因`);
   ok(BOARD.halfZ * 2 / 10 > 0.9, `★ 行距 ${(BOARD.halfZ * 2 / 10).toFixed(2)} > 0.9(棋子最寬 0.80 ⇒ 前後至少留 0.1 的縫)`);

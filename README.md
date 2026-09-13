@@ -108,7 +108,7 @@ npm run lint                # 0 error(0913 清掉兩個既有的 no-unused-vars;
 npm run build               # 產出 dist/
 npm run serve               # 另一個視窗:靜態伺服 dist/(埠 8799)
 npm run check               # 真瀏覽器冒煙 10 項(💡 提示;要先 build + serve)
-npm run check:mobile        # 真瀏覽器手機版面 39 項(展開收起 / 重置視角 / 俯角 57° 真的生效 / 舞台在選單列底下 /
+npm run check:mobile        # 真瀏覽器手機版面 39 項(展開收起 / 重置視角 / 俯角 70° 真的生效 / 舞台在選單列底下 /
                             #   旋轉靈敏度 / 更新鈕 / 真點擊走一步 / 🧩 自訂殘局全真點擊);CHECK_URL=線上網址 可驗線上
 ```
 

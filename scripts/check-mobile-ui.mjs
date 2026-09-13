@@ -123,12 +123,13 @@ console.log('\n── ③ 🎥 相機俯角「設了要真的生效」(不是只
     null, { timeout: 20000 }).catch(() => {});
   const elev = await page.evaluate(() => window.__anchess.camElevation);
   ok(elev !== null, '量得到相機的實際俯角', String(elev));
-  ok(elev !== null && Math.abs(elev - 57) < 1.5,
-    '★★ 實際渲染出來的俯角就是設定的 57°(0913 使用者「再朝玩家轉 5 度」;沒有被 OrbitControls 的 minPolarAngle 夾掉)',
+  ok(elev !== null && Math.abs(elev - 70) < 1.5,
+    '★★ 實際渲染出來的俯角就是設定的 70°(0913 下午使用者「那站也要更俯視,改成 70 度」;沒有被 OrbitControls 的 minPolarAngle 夾掉)',
     '量到 ' + (elev === null ? 'null' : elev.toFixed(1) + '°'));
 
   const tz = await page.evaluate(() => window.__anchess.camTarget && window.__anchess.camTarget.z);
-  ok(tz !== null && tz > 0.5, '★ 橫式的注視點真的往玩家這側偏了(z=' + (tz === null ? 'null' : tz.toFixed(2)) + '),棋盤上下平均才能靠近', String(tz));
+  /* 70° 時掃描法收斂到 +0.50(57° 時 +1.0):角度越陡近排放大越少,不必偏那麼多。門檻 0.4,而且用 >=(0.5 浮點會是 0.4999…)。 */
+  ok(tz !== null && tz >= 0.4, '★ 橫式的注視點真的往玩家這側偏了(z=' + (tz === null ? 'null' : tz.toFixed(2)) + '),棋盤上下平均才能靠近', String(tz));
 
   /* 📐 0913:3D 舞台從選單列**底下**開始 —— 選單列不再蓋住最上面那排黑棋。
      量三件:①畫布頂緣 ≥ 選單列底緣(不重疊)②畫布高 = 視窗高 − 選單列高 ③最上面那排棋子
