@@ -64,7 +64,12 @@ Netlify 一重新建置就會用 repo 的 `npm run build` 把 301 殼蓋回完�
 
 - PvAI,難度 1~10(對應搜尋深度 2~5),含五種開局譜(中炮 / 屏風馬 / 飛象 / 挺卒 / 自動)。
 - 💡 **AI 提示**:紫色標記 + 順手把那顆棋選起來,接著點紫格就走完。
+- 🧩 **自訂殘局**(2026-09-13):選單「🧩 自訂殘局」→ 調色盤點一顆再點棋盤擺子(🗑 拿掉)、選誰先走 / 我執哪方、
+  「▶ 開始對弈」直接跟電腦從這個局面下起;不合規則的局面(兩個帥、帥出九宮、兵卒站錯路、將帥照面、
+  非走方被將軍…)開始前擋下並講理由。「💾 存」在這台裝置(localStorage,50 筆)、「🔗 分享」網址
+  `?fen=<象棋 FEN>&me=w|b`,別人打開就是同一個局面。規則/序列化在 `src/game/position.js`,`test/position.mjs` 守。
 - 悔棋、3D 自由轉視角、PWA 可安裝可離線、⛶ 手機放大鈕。
+- 📐 手機橫式棋盤照「選單列以下看得到的區域」剛好裝滿(舞台從選單列底下開始;注視點對準投影中心,見 `src/fitCamera.js`)。
 
 ## 💡 AI 提示的規矩(2026-09-07 大改,四站統一)
 
@@ -98,11 +103,13 @@ AI 對手仍走 `getBestMoveAlphaBeta`(該換就換,棋力不受門檻約束)。
 ```bash
 npm install
 npm run dev                 # 開發
-npm test                    # test/ai.mjs 11 項(提示品質:陷阱局面 + 30 隨機中局獨立裁判)
-npm run lint                # ⚠ 有 4 個既有問題(3 error 1 warning),不是這輪造成的
+npm test                    # ai 29・version 66・legality 20・fit 40・position 44(全部 Node,不開瀏覽器)
+npm run lint                # 0 error(0913 清掉兩個既有的 no-unused-vars;剩 3 個 exhaustive-deps warning 是刻意的)
 npm run build               # 產出 dist/
 npm run serve               # 另一個視窗:靜態伺服 dist/(埠 8799)
 npm run check               # 真瀏覽器冒煙 10 項(💡 提示;要先 build + serve)
+npm run check:mobile        # 真瀏覽器手機版面 39 項(展開收起 / 重置視角 / 俯角 57° 真的生效 / 舞台在選單列底下 /
+                            #   旋轉靈敏度 / 更新鈕 / 真點擊走一步 / 🧩 自訂殘局全真點擊);CHECK_URL=線上網址 可驗線上
 ```
 
 部署(⚠ **直傳站,`git push` 不會上線**):
@@ -117,7 +124,12 @@ npm run deploy      # build → 推三站 → 驗三站指紋一致(見上面「
 | `src/App.jsx` | 接線(棋盤互動 / 提示 / 難度 / 開局譜);`HintIndicator` 紫色標記 |
 | `src/game/logic.js` | `GameEngine`:盤面、走法規則、zobrist hash、move/undo |
 | `src/game/ai.js` | 評估(子力 + PST)、`quiescence`、`searchAlphaBeta`、`getBestMoveAlphaBeta`(對手)、`getHintMove`(提示) |
+| `src/game/position.js` | 🧩 局面 ↔ FEN(`toFen`/`fromFen`)+ `validatePosition`(自訂殘局開始前的規則檢查) |
+| `src/boardLayout.js` | 棋盤版面單一真相(行距 0.92、格↔世界座標、棋子尺寸);格線/棋子/提示/點擊/相機五處共用 |
+| `src/fitCamera.js` | 相機 fit:直向 8 角精算、橫式 `fitLandscape`(注視點沿 z 掃 + 二分搜最小距離);純數學可在 Node 測 |
 | `test/ai.mjs` | `npm test`:提示品質(獨立裁判 `refQuiesce` 只看子力、只走吃子) |
+| `test/fit.mjs` / `test/position.mjs` | 棋盤裝得進畫面(8 角投影)+ 0913 四句話當地板 / FEN 往返 + 局面合法性 |
+| `scripts/check-mobile-ui.mjs` | 真瀏覽器手機版面 39 項(含 🧩 自訂殘局全真點擊流程) |
 | `scripts/browser-check.mjs` | 真瀏覽器冒煙(真滑鼠點擊,不在 evaluate 裡呼叫函式) |
 | `scripts/serve-dist.mjs` | 零相依靜態伺服器,給 browser-check 用 |
 

@@ -19,6 +19,13 @@ html,
   position: relative;
 }
 
+/* 📐 3D 舞台(2026-09-13):手機上 top = 選單列的高度(App.jsx 用 ResizeObserver 量),
+   棋盤照「選單列以下看得到的區域」剛好裝滿,最上面一排不再躲在選單列底下。桌機 top:0。 */
+.stage {
+  position: absolute;
+  left: 0; right: 0; bottom: 0; top: 0;
+}
+
 .ui-overlay {
   position: absolute;
   top: 20px;
@@ -170,13 +177,43 @@ h1 {
     margin: 0;
   }
 
-  /* Push the 3D canvas down on mobile */
-  canvas {
-    margin-top: 20px;
-    transform: scale(0.9);
-    transform-origin: top center;
-  }
+  /* 2026-09-13 拿掉這裡原本的 `canvas { margin-top:20px; transform:scale(0.9) }`。
+     它是腳手架留下的「把 3D 畫布往下推、縮成九成」—— 一條**沒有人算進去**的第二層 margin:
+     fitCamera 照畫布尺寸算到剛好裝滿,CSS 再偷偷縮 10%、往下推 20px,棋盤就永遠比算出來的小一圈,
+     下面還多一條 20px + 10% 的空帶。使用者「棋盤再大一點」有一成就是它吃掉的。
+     ★ 覆蓋頂部選單的問題由 fitCamera 的注視點偏移處理(棋盤在畫面裡上下平均),不靠 CSS 位移。 */
 }
+
+/* 🧩 自訂殘局編輯器(2026-09-13)。⚠ 一定要寫在 index.css(App.css 沒被 import,見下面那段)。 */
+.editor { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.editor-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.editor-row.pal { gap: 3px; }
+/* 調色盤:一顆一顆像棋子(圓、象牙白面、紅字/深藍字),選中的那顆橘框放大(和盤上「選中=橘」同一個語言) */
+.pal-btn {
+  width: 34px; height: 34px; padding: 0; margin: 0;
+  border-radius: 50%; border: 2px solid transparent;
+  font-weight: bold; font-size: 15px; line-height: 1; cursor: pointer;
+  background: #fdfaf6; color: #1d3557;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .35);
+}
+.pal-btn.red { color: #e63946; }
+.pal-btn.on { border-color: #f4a261; transform: scale(1.12); box-shadow: 0 0 0 2px rgba(244, 162, 97, .55); }
+.editor select, .editor input {
+  font-size: 12px; padding: 4px 6px; border-radius: 5px; border: 1px solid #ccc;
+  background: rgba(255, 255, 255, .92); color: #222; min-width: 0; margin: 0;
+}
+.editor label { font-size: 11px; display: inline-flex; align-items: center; gap: 3px; }
+.editor input { flex: 1 1 120px; }
+.editor .editor-row > button:not(.pal-btn) {
+  padding: 6px 8px; margin: 0; border: none; border-radius: 6px;
+  font-weight: bold; font-size: 12px; cursor: pointer; color: #fff; background: #607D8B;
+  min-height: 30px;
+}
+.editor .editor-row > button.primary { background: #4CAF50; }
+.editor .editor-row > button.danger { background: #c62828; }
+.editor .editor-row > button:disabled { opacity: .45; cursor: default; }
+.edit-msg { margin: 0; font-size: 12px; line-height: 1.5; color: #ffd54f; }
+.edit-msg.bad { color: #ff8a80; }
 /* 🏷 版本徽章 + 改版簡歷(艦隊鐵則⑦,2026-09-09 補)
    ⚠⚠ 這一段一定要寫在 **index.css**:本專案只有 src/main.jsx 的 `import './index.css'`,
       **src/App.css 沒有被任何檔 import**(等於死檔)。0909 我先寫進 App.css,

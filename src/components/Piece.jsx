@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
 import { gridToWorld, PIECE_R_TOP, PIECE_R_MID, PIECE_R_BASE } from '../boardLayout.js';

@@ -76,8 +76,26 @@ function FitCamera({ is2D, scale, controlsRef, fitRef }) {
 
   return null;
 }
-import { GameEngine } from './game/logic';
+import { GameEngine, INITIAL_BOARD } from './game/logic';
 import { getBestMoveAlphaBeta, getHintMove } from './game/ai';
+import { toFen, fromFen, validatePosition, EMPTY_BOARD, PIECE_NAME } from './game/position.js';
+
+/* 🧩 自訂殘局(2026-09-13 使用者:「3d-chinese-chess 增加自訂殘局功能」)。
+   ★ 調色盤兩排:紅 帥仕相傌俥炮兵 / 黑 將士象馬車砲卒,再加一顆 🗑(拿掉棋子)。
+   ★ 存在 localStorage(這台裝置的瀏覽器裡),最多留 50 筆;讀寫都包 try/catch
+     (Safari 私密模式會丟例外,不是回 null)。
+   ★ 分享 = 把局面編成網址 `?fen=…&me=w|b`,打開就直接從那個局面開打(見下面 useEffect)。 */
+const PALETTE_RED = ['K', 'A', 'B', 'N', 'R', 'C', 'P'];
+const PALETTE_BLACK = ['k', 'a', 'b', 'n', 'r', 'c', 'p'];
+const PUZZLE_STORE_KEY = 'xiangqiCustomPuzzles';
+const loadPuzzles = () => {
+  try { const v = JSON.parse(localStorage.getItem(PUZZLE_STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+};
+const savePuzzles = (list) => {
+  try { localStorage.setItem(PUZZLE_STORE_KEY, JSON.stringify(list)); return true; }
+  catch { return false; }
+};
 import { Board } from './components/Board';
 import { Piece } from './components/Piece';
 import { VERSION, DATE, CHANGELOG } from './version';
@@ -129,7 +147,29 @@ function App() {
     const t = setTimeout(() => { el.style.opacity = '0'; }, 10000);
     return () => clearTimeout(t);
   }, []);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  /* 📱 手機版面?要和 index.css 的斷點**同一條**:`(max-width:768px), (max-height:500px)`。
+     以前只認寬度 ⇒ 手機轉橫(844 寬)JS 當桌機、CSS 當手機,兩邊各講各的(0910 那顆
+     「展開/收起 DISABLE」就是這種分岔)。 */
+  const isMobileLayout = () => window.innerWidth <= 768 || window.innerHeight <= 500;
+  const [isMobile, setIsMobile] = useState(isMobileLayout);
+  /* 📐 手機上的頂部選單列有多高 → 3D 舞台從它**下面**開始(2026-09-13)。
+     由來:選單列是蓋在畫布上的浮層;棋盤照整個畫布算「剛好裝滿」之後,最上面那一排
+     (黑方的車馬象士將)正好躲在收起的選單列底下。以前是 CSS 偷偷把畫布往下推 20px、
+     縮成九成來避開它(見 index.css 那段),但那是沒人算進去的第二層 margin,棋盤永遠比算的小。
+     ⇒ 改成量選單列的真實高度,畫布從那裡開始 ⇒ 棋盤照「看得到的區域」剛好裝滿,一排都不被蓋;
+       選單展開時棋盤自動縮進剩下的空間(整張看得到),收起時再放大。編輯殘局時尤其重要:
+       調色盤展開著也要點得到最上面一排。桌機的選單是左上角小卡,不推。 */
+  const overlayRef = useRef(null);
+  const [overlayH, setOverlayH] = useState(0);
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => setOverlayH(Math.round(el.getBoundingClientRect().height));
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
   /* 💡 AI 提示:{ from, to, hash } —— hash 是算它的時候那個局面的 zobrist。
      局面一變 hash 就對不上 ⇒ 舊建議自己失效,不必去每個動棋盤的地方補一行清除
      (逐處補漏一處就是「提示指著一格早就過期的棋」,而且不會有任何東西報錯)。 */
@@ -137,8 +177,34 @@ function App() {
   const [hintThinking, setHintThinking] = useState(false);
   const controlsRef = useRef();
 
+  /* 🧩 自訂殘局編輯器的狀態 */
+  const [editing, setEditingState] = useState(false);
+  const [editTool, setEditToolState] = useState('R');   // 調色盤選中的棋子,或 'erase'
+  /* ★ 棋盤上的點擊是 R3F 場景裡 mesh 的 onClick —— 那是**另一個 React root**,外層 state 改了,
+       裡面的 handler 要晚一拍才換成新閉包(實測:調色盤按完馬上點棋盤,放上去的是**上一顆**)。
+       真手指兩下之間有幾百毫秒通常追得上,但自動化驗收與快手會踩到 ⇒ 工具與「編輯中」
+       都同時放進 ref,handler 一律讀 ref、state 只管畫面。 */
+  const editToolRef = useRef('R');
+  const editingRef = useRef(false);
+  const setEditTool = (t) => { editToolRef.current = t; setEditToolState(t); };
+  const setEditing = (v) => { editingRef.current = v; setEditingState(v); };
+  const [editTurn, setEditTurn] = useState('w');        // 開始時誰先走
+  const [editMe, setEditMe] = useState('w');            // 玩家執哪一方
+  const [editMsg, setEditMsg] = useState({ text: '', bad: false });
+  const [puzzles, setPuzzles] = useState(loadPuzzles);
+  const [puzzleName, setPuzzleName] = useState('');
+  const [pickId, setPickId] = useState('');
+  const [shareUrl, setShareUrl] = useState('');
+  const editBackupRef = useRef(null);                   // 進編輯器前的那一局,按「離開」時還回去
+  /* ★ 玩家顏色與「這是自訂局」放進 ref:makeAIMove 是用 setTimeout 排進去的,
+       跑的時候拿到的是**排進去那一刻**那一輪 render 的閉包 —— 剛 setPlayerColor 完馬上
+       排 AI 走,閉包裡還是舊的顏色,AI 會以為輪到玩家而不走。ref 永遠是最新值。 */
+  const playerColorRef = useRef('w');
+  const customGameRef = useRef(false);
+  useEffect(() => { playerColorRef.current = playerColor; }, [playerColor]);
+
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    const handleResize = () => setIsMobile(isMobileLayout());
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -215,6 +281,10 @@ function App() {
       get hint() { return hint; },
       get thinking() { return hintThinking; },
       get selected() { return selectedPiece; },
+      /* 🧩 自訂殘局(0913):編輯中?/ 目前局面的 FEN / 玩家執哪一方 —— 驗收腳本用真點擊擺子後對這三個對賬 */
+      get editing() { return editing; },
+      get fen() { return toFen(engine.board, engine.turn); },
+      get playerColor() { return playerColor; },
       /* 🎥 相機的長寬比 vs 畫布真正的長寬比 —— 0910「重置視角把棋盤壓扁」那個 bug 的量法:
          病發時 camera.aspect 會停在轉向**之前**的舊值,和畫布現在的比例對不上,畫面就被拉扁。
          兩個都讀得到,測試才問得出「它們一不一致」(只看畫面截圖看不出是哪一邊錯)。 */
@@ -237,7 +307,15 @@ function App() {
       get camElevation() {
         const p = controlsRef.current?.object?.position;
         if (!p) return null;
-        return (Math.atan2(p.y, Math.hypot(p.x, p.z)) * 180) / Math.PI;
+        /* 0913:俯角要對**注視點**量,不是對原點 —— 橫式的注視點現在偏在 z=+1 左右(fitLandscape),
+           對原點量會少掉 4~5 度,看起來像「角度沒生效」,其實是量錯基準。 */
+        const t = controlsRef.current?.target || { x: 0, y: 0, z: 0 };
+        return (Math.atan2(p.y - t.y, Math.hypot(p.x - t.x, p.z - t.z)) * 180) / Math.PI;
+      },
+      /* 0913:注視點(fitLandscape 會把它沿 z 往玩家這側偏)—— 驗「真的偏了」用 */
+      get camTarget() {
+        const t = controlsRef.current?.target;
+        return t ? { x: t.x, y: t.y, z: t.z } : null;
       },
       /* 🖱 格座標 → 螢幕像素(2026-09-10 補,查「炮吃炮沒有屏風」那批 bug 用)。
          驗收腳本要用**真滑鼠點擊**(page.mouse.click)才會走到真正的 raycast onClick,
@@ -273,6 +351,9 @@ function App() {
   // 📡 完賽 beacon:一局分出結果(帥/將被吃、絕殺、三次重複犯規)= 一次 -done。打點函式住在 index.html;統計是配菜,失敗靜默。
   const psDone = () => { try { window.psDone && window.psDone(); } catch { /* noop */ } };
 
+  /* 誰是玩家、誰是 AI,照 playerColorRef 講(自訂殘局可以執黑;以前寫死「紅=玩家、黑=AI」) */
+  const sideLabel = (c) => (c === 'w' ? '紅方' : '黑方') + (c === playerColorRef.current ? ' (玩家)' : ' (AI)');
+
   const syncBoard = () => {
     setBoardState(engine.board.map(row => [...row]));
 
@@ -283,26 +364,26 @@ function App() {
     });
 
     if (!redAlive) {
-      setTimeout(() => alert('紅方帥被吃，黑方獲勝！遊戲結束。'), 100);
+      setTimeout(() => alert(`紅方帥被吃，${sideLabel('b')}獲勝！遊戲結束。`), 100);
       psDone();
       return false;
     }
     if (!blackAlive) {
-      setTimeout(() => alert('黑方將被吃，紅方獲勝！遊戲結束。'), 100);
+      setTimeout(() => alert(`黑方將被吃，${sideLabel('w')}獲勝！遊戲結束。`), 100);
       psDone();
       return false;
     }
 
     if (engine.isCheckmate()) {
-      const winner = engine.turn === 'w' ? '黑方 (AI)' : '紅方 (玩家)';
+      const winner = sideLabel(engine.turn === 'w' ? 'b' : 'w');
       setTimeout(() => alert(`絕殺無解！${winner}獲勝！遊戲結束。`), 100);
       psDone();
       return false;
     }
 
     if (engine.boardMap.get(engine.zobristHash) >= 3) {
-      const loser = engine.turn === 'w' ? '黑方 (AI)' : '紅方 (玩家)';
-      const winner = engine.turn === 'w' ? '紅方 (玩家)' : '黑方 (AI)';
+      const loser = sideLabel(engine.turn === 'w' ? 'b' : 'w');
+      const winner = sideLabel(engine.turn);
       setTimeout(() => alert(`重複走法追追追達三次！${loser}犯規，${winner}獲勝！遊戲結束。`), 100);
       psDone();
       return false;
@@ -311,7 +392,19 @@ function App() {
     return true;
   };
 
+  /* 🧩 編輯中:點哪一格就把調色盤選中的棋子放上去(🗑 = 拿掉)。
+     ★ 直接改 engine.board 再 setBoardState —— 編輯中沒有「走法」可言,不走 syncBoard
+       (那支會在少了帥/將時跳「獲勝」的 alert)。 */
+  const editPlace = (x, y) => {
+    if (x < 0 || x > 8 || y < 0 || y > 9) return;
+    const tool = editToolRef.current;
+    engine.board[y][x] = tool === 'erase' ? '.' : tool;
+    setBoardState(engine.board.map((row) => [...row]));
+    if (editMsg.text) setEditMsg({ text: '', bad: false });
+  };
+
   const handlePieceClick = (x, y) => {
+    if (editingRef.current) { editPlace(x, y); return; }
     const p = engine.board[y][x];
     const isRed = p >= 'A' && p <= 'Z';
     const pColor = isRed ? 'w' : 'b';
@@ -325,12 +418,13 @@ function App() {
   };
 
   const handleBoardClick = (evt) => {
-    if (!selectedPiece) return;
     /* 世界座標 → 格座標。⚠ 這裡原本寫死 `/1.2`(桌機那一檔的 group scale),
        手機是 1.0 ⇒ 點空格會算到隔壁格(既有 bug,2026-09-10 一併修掉)。
        縮放與行距一律交給 boardLayout.worldToGrid,和畫格線/擺棋子共用同一組數字。 */
     const scale = isMobile ? 1.0 : 1.2;
     const [nx, nz] = worldToGrid(evt.point.x, evt.point.z, scale);
+    if (editingRef.current) { editPlace(nx, nz); return; }
+    if (!selectedPiece) return;
     tryMove(selectedPiece, [nx, nz]);
   };
 
@@ -395,8 +489,10 @@ function App() {
   };
 
   const makeAIMove = () => {
-    if (engine.turn === playerColor) return;
-    const best = getBestMoveAlphaBeta(engine, difficulty, openingStyle);
+    if (engine.turn === playerColorRef.current) return;
+    /* 🧩 自訂殘局不用開局書:書裡的手是「開局盤面」的手,殘局裡就算剛好合法也只是瞎走一步。
+         (getBestMoveAlphaBeta 只看 history.length ≤ 3 判「開局」,殘局一開始 history 就是空的。) */
+    const best = getBestMoveAlphaBeta(engine, difficulty, customGameRef.current ? 'none' : openingStyle);
     if (best) {
       engine.move(best.from, best.to);
       syncBoard();
@@ -406,8 +502,9 @@ function App() {
   };
 
   const undo = () => {
+    if (editing) return;
     engine.undo();
-    if (engine.turn !== playerColor) engine.undo(); // Undo AI move too
+    if (engine.turn !== playerColorRef.current) engine.undo(); // Undo AI move too
     syncBoard();
     setSelectedPiece(null);
   };
@@ -426,10 +523,8 @@ function App() {
     const data = localStorage.getItem('xiangqiSave');
     if (data) {
       const parsed = JSON.parse(data);
-      engine.board = parsed.board;
-      engine.turn = parsed.turn;
-      engine.history = parsed.history;
-      engine.recalculateHash();
+      engine.loadPosition(parsed.board, parsed.turn);
+      engine.history = Array.isArray(parsed.history) ? parsed.history : [];
       syncBoard();
       alert('Game Loaded!');
     }
@@ -453,13 +548,128 @@ function App() {
   };
 
   const restartGame = () => {
-    const newEngine = new GameEngine();
-    engine.board = newEngine.board;
-    engine.turn = newEngine.turn;
-    engine.history = newEngine.history;
+    engine.loadPosition(INITIAL_BOARD, 'w');
+    customGameRef.current = false;
+    setPlayerColor('w'); playerColorRef.current = 'w';
+    setEditing(false);
+    setHint(null);
     syncBoard();
     setSelectedPiece(null);
   };
+
+  /* ══════════ 🧩 自訂殘局編輯器 ══════════ */
+  const say = (text, bad = false) => setEditMsg({ text, bad });
+
+  const startEditor = () => {
+    editBackupRef.current = {
+      board: engine.board.map((row) => [...row]), turn: engine.turn, history: [...engine.history],
+      me: playerColorRef.current, custom: customGameRef.current,
+    };
+    setSelectedPiece(null);
+    setHint(null);
+    setShareUrl('');
+    setEditTurn(engine.turn);
+    setEditing(true);
+    say('先點下面一顆棋子,再點棋盤把它放上去;點 🗑 再點棋子可以拿掉。擺好按「▶ 開始對弈」。');
+  };
+
+  /* 「✕ 離開」= 不採用這次的擺法,回到進來之前那一局 */
+  const exitEditor = () => {
+    const b = editBackupRef.current;
+    if (b) {
+      engine.loadPosition(b.board, b.turn);
+      engine.history = b.history;
+      customGameRef.current = b.custom;
+      setPlayerColor(b.me); playerColorRef.current = b.me;
+      setBoardState(engine.board.map((row) => [...row]));
+    }
+    setEditing(false);
+    setShareUrl('');
+  };
+
+  const editClear = () => { engine.board = EMPTY_BOARD(); setBoardState(engine.board.map((r) => [...r])); say('盤面清空了。'); };
+  const editInitial = () => { engine.board = INITIAL_BOARD.map((r) => [...r]); setBoardState(engine.board.map((r) => [...r])); say('放回開局盤面,可以在上面拿掉或移動棋子。'); };
+
+  /** 從一個局面開打(編輯器「開始」/ 載入 / 分享連結都走這裡) */
+  const beginCustomGame = (board, turn, me) => {
+    engine.loadPosition(board, turn);
+    customGameRef.current = true;
+    setPlayerColor(me); playerColorRef.current = me;
+    setEditing(false);
+    setShareUrl('');
+    setSelectedPiece(null);
+    setHint(null);
+    setBoardState(engine.board.map((row) => [...row]));
+    if (engine.turn !== me) setTimeout(makeAIMove, 300);   // 先走的是電腦 ⇒ 它先走
+  };
+
+  const startFromEditor = () => {
+    const v = validatePosition(engine.board, editTurn);
+    if (!v.ok) { say('⚠ ' + v.errors.join(';'), true); return; }
+    beginCustomGame(engine.board, editTurn, editMe);
+  };
+
+  const savePuzzle = () => {
+    const v = validatePosition(engine.board, editTurn);
+    if (!v.ok) { say('⚠ 先把局面擺對再存:' + v.errors[0], true); return; }
+    const name = (puzzleName.trim() || `殘局 ${new Date().toLocaleDateString('zh-TW')}`).slice(0, 30);
+    const item = { id: Date.now().toString(36), name, fen: toFen(engine.board, editTurn), me: editMe, at: new Date().toISOString().slice(0, 10) };
+    const list = [item, ...puzzles].slice(0, 50);
+    if (savePuzzles(list)) { setPuzzles(list); setPickId(item.id); say(`💾 已存「${name}」(存在這台裝置的瀏覽器裡;要給別人用「🔗 分享」)。`); }
+    else say('⚠ 存不進去:瀏覽器不讓這個網頁存資料(私密瀏覽常見)。', true);
+  };
+
+  const loadPuzzle = () => {
+    const p = puzzles.find((q) => q.id === pickId);
+    if (!p) return;
+    const parsed = fromFen(p.fen);
+    if (!parsed) { say('⚠ 這一筆殘局的資料壞了,讀不出來。', true); return; }
+    engine.board = parsed.board;
+    setEditTurn(parsed.turn);
+    if (p.me === 'w' || p.me === 'b') setEditMe(p.me);
+    setPuzzleName(p.name);
+    setBoardState(engine.board.map((r) => [...r]));
+    say(`📂 已載入「${p.name}」——可以再改,或直接按「▶ 開始對弈」。`);
+  };
+
+  const deletePuzzle = () => {
+    const p = puzzles.find((q) => q.id === pickId);
+    if (!p) return;
+    if (!window.confirm(`要刪掉「${p.name}」嗎?`)) return;
+    const list = puzzles.filter((q) => q.id !== pickId);
+    savePuzzles(list);
+    setPuzzles(list);
+    setPickId('');
+    say(`🗑 已刪掉「${p.name}」。`);
+  };
+
+  const sharePuzzle = async () => {
+    const v = validatePosition(engine.board, editTurn);
+    if (!v.ok) { say('⚠ 先把局面擺對再分享:' + v.errors[0], true); return; }
+    const url = `${location.origin}${location.pathname}?fen=${encodeURIComponent(toFen(engine.board, editTurn))}&me=${editMe}`;
+    setShareUrl(url);
+    try {
+      await navigator.clipboard.writeText(url);
+      say('🔗 連結已複製!傳給別人,打開就是這個局面(下面那格也可以手動複製)。');
+    } catch {
+      say('🔗 連結在下面那一格,長按/全選複製後傳給別人,打開就是這個局面。');
+    }
+  };
+
+  /* 🔗 ?fen= 深連結:別人分享的殘局,打開直接從那個局面開打(和姊妹站 ?daily 同一種「一打開就進去」)。
+     ⚠ 字串來自網址,格式不對或不合規則就講一句、留在正常開局,不炸。 */
+  useEffect(() => {
+    let q;
+    try { q = new URLSearchParams(window.location.search); } catch { return; }
+    const fen = q.get('fen');
+    if (!fen) return;
+    const parsed = fromFen(fen);
+    if (!parsed) { setTimeout(() => alert('連結裡的殘局資料讀不出來,改開一般對局。'), 300); return; }
+    const v = validatePosition(parsed.board, parsed.turn);
+    if (!v.ok) { setTimeout(() => alert('連結裡的殘局不合規則:' + v.errors[0] + '。改開一般對局。'), 300); return; }
+    beginCustomGame(parsed.board, parsed.turn, q.get('me') === 'b' ? 'b' : 'w');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* 🎥 重置視角。★ 一定要**連 target 一起歸零** —— 兩指平移會把注視點拖走,
        只搬相機位置會變成「從新位置看著被拖歪的中心」,比原本更亂(0909 姊妹站同一條)。
@@ -472,13 +682,67 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className={`ui-overlay glass ${panelOpen ? '' : 'panel-collapsed'}`}>
+      <div className={`ui-overlay glass ${panelOpen ? '' : 'panel-collapsed'}`} ref={overlayRef}>
         <button className="panel-toggle" onClick={() => setPanelOpen(!panelOpen)}>
           {panelOpen ? '▲ 收起' : '▼ 展開'}
         </button>
         {panelOpen && (
           <>
             <h1>3D 象棋</h1>
+            {editing ? (
+              /* 🧩 自訂殘局編輯器(取代平常的控制列,省手機上的高度) */
+              <div className="editor" id="editor">
+                <div className="editor-row pal" aria-label="調色盤">
+                  {PALETTE_RED.map((p) => (
+                    <button key={p} type="button" className={`pal-btn red ${editTool === p ? 'on' : ''}`}
+                      data-piece={p} title={`放一顆${PIECE_NAME[p]}`} onClick={() => setEditTool(p)}>{PIECE_NAME[p]}</button>
+                  ))}
+                  {PALETTE_BLACK.map((p) => (
+                    <button key={p} type="button" className={`pal-btn ${editTool === p ? 'on' : ''}`}
+                      data-piece={p} title={`放一顆${PIECE_NAME[p]}`} onClick={() => setEditTool(p)}>{PIECE_NAME[p]}</button>
+                  ))}
+                  <button type="button" className={`pal-btn ${editTool === 'erase' ? 'on' : ''}`}
+                    data-piece="erase" title="拿掉棋子" onClick={() => setEditTool('erase')}>🗑</button>
+                </div>
+                <div className="editor-row">
+                  <label>先走
+                    <select value={editTurn} onChange={(e) => setEditTurn(e.target.value)} aria-label="誰先走">
+                      <option value="w">紅方</option><option value="b">黑方</option>
+                    </select>
+                  </label>
+                  <label>我執
+                    <select value={editMe} onChange={(e) => setEditMe(e.target.value)} aria-label="我執哪一方">
+                      <option value="w">紅方</option><option value="b">黑方</option>
+                    </select>
+                  </label>
+                  <button type="button" onClick={editClear}>清空</button>
+                  <button type="button" onClick={editInitial}>開局盤面</button>
+                </div>
+                <div className="editor-row">
+                  <input value={puzzleName} onChange={(e) => setPuzzleName(e.target.value)} maxLength={30}
+                    placeholder="殘局名稱(存檔用)" aria-label="殘局名稱" />
+                  <button type="button" onClick={savePuzzle}>💾 存</button>
+                  <button type="button" onClick={sharePuzzle}>🔗 分享</button>
+                </div>
+                {puzzles.length > 0 && (
+                  <div className="editor-row">
+                    <select value={pickId} onChange={(e) => setPickId(e.target.value)} aria-label="我存的殘局">
+                      <option value="">— 我存的殘局({puzzles.length})—</option>
+                      {puzzles.map((p) => <option key={p.id} value={p.id}>{p.name}({p.at})</option>)}
+                    </select>
+                    <button type="button" onClick={loadPuzzle} disabled={!pickId}>📂 載入</button>
+                    <button type="button" className="danger" onClick={deletePuzzle} disabled={!pickId}>🗑 刪</button>
+                  </div>
+                )}
+                {editMsg.text && <p className={`edit-msg ${editMsg.bad ? 'bad' : ''}`} id="editMsg">{editMsg.text}</p>}
+                {shareUrl && <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} aria-label="分享連結" />}
+                <div className="editor-row">
+                  <button type="button" id="editorStart" className="primary" onClick={startFromEditor}>▶ 開始對弈</button>
+                  <button type="button" id="editorExit" onClick={exitEditor}>✕ 離開編輯</button>
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="controls">
               <label>難度 (Difficulty):
                 <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>
@@ -529,6 +793,8 @@ function App() {
               </button>
               <button onClick={() => setIs2D(!is2D)} style={{ background: '#2196F3' }}>切換 {is2D ? '3D' : '2D'} 視角</button>
               <button onClick={restartGame} style={{ background: '#FF5722' }}>重新開局 (Restart)</button>
+              {/* 🧩 自訂殘局(2026-09-13):自己擺局面 → 存 / 分享 / 跟電腦從這裡下起 */}
+              <button id="editorButton" onClick={startEditor} style={{ background: '#b8860b' }} title="自己擺一個局面,存起來、分享,或直接跟電腦下">🧩 自訂殘局</button>
               <button onClick={undo}>悔棋 (Undo)</button>
               <button onClick={saveGame}>存檔 (Save)</button>
               <button onClick={loadGame}>讀檔 (Load)</button>
@@ -546,6 +812,8 @@ function App() {
                 <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
               )}
             </div>
+            </>
+            )}
           </>
         )}
       </div>
@@ -553,6 +821,9 @@ function App() {
       {/* ⚠ 這裡的 position/fov 只是**掛載時的種子值**;真正的距離與 fov 由下面的
             <FitCamera> 照畫布長寬比重算(R3F 的 camera prop 不是 reactive 的,
             改了 isMobile 它也不會跟著變 —— 別把版面邏輯放在這一行)。 */}
+      {/* 📐 舞台:手機上從選單列底下開始(top = 選單列高度),桌機整個畫面。
+            R3F 的 Canvas 填滿這個 div,尺寸一變 <FitCamera> 就重算 —— 不必自己聽 resize。 */}
+      <div className="stage" id="stage" style={{ top: isMobile ? overlayH : 0 }}>
       <Canvas shadows camera={{ position: [0, 8, 8], fov: isMobile ? 55 : 45 }}>
         <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} />
         <color attach="background" args={['#2c3e50']} />
@@ -625,6 +896,7 @@ function App() {
         />
         <Environment preset="city" />
       </Canvas>
+      </div>
     </div>
   );
 }

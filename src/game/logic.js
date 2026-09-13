@@ -57,6 +57,16 @@ export class GameEngine {
     this.boardMap.set(h, 1);
   }
 
+  /* 🧩 載入一個局面(自訂殘局 / 分享連結 / 讀檔)(2026-09-13)。
+     盤面複製一份(不共用呼叫端的陣列)、輪到誰、歷史清空、hash 重算。
+     ★ 以前 loadGame 是三行各自賦值再 recalculateHash —— 集中成一支,漏一行(例如忘了清
+       history)的話悔棋會回到「不存在的上一局」,而且不會報錯。 */
+  loadPosition(board, turn = 'w') {
+    this.board = board.map((row) => [...row]);
+    this.turn = turn === 'b' ? 'b' : 'w';
+    this.history = [];
+    this.recalculateHash();
+  }
   isRed(piece) { return piece >= 'A' && piece <= 'Z'; }
   isBlack(piece) { return piece >= 'a' && piece <= 'z'; }
   getColor(piece) {
@@ -177,14 +187,6 @@ export class GameEngine {
       }
     };
 
-    const addPawnIfValid = (nx, ny) => {
-      if (nx >= 0 && nx < 9 && ny >= 0 && ny < 10) {
-        const target = this.board[ny][nx];
-        if (target === '.' || this.getColor(target) !== color) {
-          moves.push([nx, ny]);
-        }
-      }
-    };
 
     if (type === 'k') { // King (帥/將)
       const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];

@@ -37,6 +37,12 @@ const ok = (cond, msg, note = '') => {
 const open = async (viewport) => {
   const page = await browser.newPage({ viewport });
   await page.goto(URL + '?v=' + Date.now(), { waitUntil: 'domcontentloaded' });
+  /* ⚠ 第一次載入會裝 SW,SW 接管那一刻 App 自動 reload 一次(App.jsx 的 controllerchange)。
+       reload 途中 window.__anchess 會消失一瞬 —— 不等它做完,後面的 evaluate 會撞到 undefined
+       (0913 實測 ⑥ 隨機紅:Cannot read properties of undefined (reading 'screenPosFor'),
+        前幾輪全綠只是運氣)。⇒ 等到「這一頁是 reload 進來的」再往下;4 秒沒等到就放行。 */
+  await page.waitForFunction(() => (performance.getEntriesByType('navigation')[0] || {}).type === 'reload',
+    null, { timeout: 4000 }).catch(() => {});
   await page.waitForSelector('canvas', { timeout: 20000 });
   await page.waitForFunction(() => window.__anchess && window.__anchess.canvasAspect, null, { timeout: 20000 });
   return page;
@@ -117,9 +123,33 @@ console.log('\n── ③ 🎥 相機俯角「設了要真的生效」(不是只
     null, { timeout: 20000 }).catch(() => {});
   const elev = await page.evaluate(() => window.__anchess.camElevation);
   ok(elev !== null, '量得到相機的實際俯角', String(elev));
-  ok(elev !== null && Math.abs(elev - 62) < 1.5,
-    '★★ 實際渲染出來的俯角就是設定的 62°(沒有被 OrbitControls 的 minPolarAngle 夾掉)',
+  ok(elev !== null && Math.abs(elev - 57) < 1.5,
+    '★★ 實際渲染出來的俯角就是設定的 57°(0913 使用者「再朝玩家轉 5 度」;沒有被 OrbitControls 的 minPolarAngle 夾掉)',
     '量到 ' + (elev === null ? 'null' : elev.toFixed(1) + '°'));
+
+  const tz = await page.evaluate(() => window.__anchess.camTarget && window.__anchess.camTarget.z);
+  ok(tz !== null && tz > 0.5, '★ 橫式的注視點真的往玩家這側偏了(z=' + (tz === null ? 'null' : tz.toFixed(2)) + '),棋盤上下平均才能靠近', String(tz));
+
+  /* 📐 0913:3D 舞台從選單列**底下**開始 —— 選單列不再蓋住最上面那排黑棋。
+     量三件:①畫布頂緣 ≥ 選單列底緣(不重疊)②畫布高 = 視窗高 − 選單列高 ③最上面那排棋子
+     的頂面投影在畫布裡(不是被選單蓋著)。收起選單後畫布要變高(棋盤跟著放大)。 */
+  const geo = () => page.evaluate(() => {
+    const ov = document.querySelector('.ui-overlay').getBoundingClientRect();
+    const cv = document.querySelector('canvas').getBoundingClientRect();
+    const top = window.__anchess.screenPosFor(4, 0);          // 黑將起手格(最上面那排)
+    return { ovBottom: ov.bottom, cvTop: cv.top, cvHeight: cv.height, winH: window.innerHeight, topPiece: top };
+  });
+  const g1 = await geo();
+  ok(g1.cvTop >= g1.ovBottom - 1, '★ 畫布從選單列底下開始(選單列不蓋棋盤)', JSON.stringify(g1));
+  ok(Math.abs(g1.cvHeight - (g1.winH - g1.ovBottom)) <= 3, '★ 畫布高 = 視窗高 − 選單列高', JSON.stringify(g1));
+  ok(g1.topPiece && g1.topPiece.y > g1.ovBottom + 4, '★★ 最上面那排棋子(黑將)真的在選單列下方看得到', JSON.stringify(g1.topPiece));
+  await page.click('.panel-toggle');                          // 收起選單 ⇒ 舞台變高、棋盤放大
+  await page.waitForFunction((h0) => document.querySelector('canvas').getBoundingClientRect().height > h0 + 20, g1.cvHeight, { timeout: 5000 })
+    .then(() => ok(true, '★ 收起選單後畫布變高(棋盤跟著放大)'))
+    .catch(() => ok(false, '★ 收起選單後畫布變高(棋盤跟著放大)', '5 秒內畫布高度沒變'));
+  const g2 = await geo();
+  ok(g2.cvTop >= g2.ovBottom - 1 && g2.topPiece && g2.topPiece.y > g2.ovBottom + 4,
+    '★ 收起後最上面那排仍在收起的選單列下方(以前這排就是躲在這條底下)', JSON.stringify({ ovBottom: g2.ovBottom, top: g2.topPiece }));
   await page.close();
 }
 
@@ -186,7 +216,7 @@ console.log('\n── ⑥ 真的走一步棋,黑方要真的回應(2026-09-10 �
 
   /* ⚠ camAspect 非 null 不代表 controlsRef.current(相機物件)也已經掛好——
      screenPosFor 讀的是後者,兩者掛載時機差一拍,這裡要多等一次(跟②那條同一個坑)。 */
-  await page.waitForFunction(() => window.__anchess.screenPosFor(7, 7) !== null, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => window.__anchess && window.__anchess.screenPosFor(7, 7) !== null, null, { timeout: 10000 }).catch(() => {});
 
   const before = await dump();
   const p1 = await clickCell(7, 7);   // 右邊紅炮起手位置
@@ -201,6 +231,102 @@ console.log('\n── ⑥ 真的走一步棋,黑方要真的回應(2026-09-10 �
   ok(countPieces(after.board) === countPieces(before.board),
     '★★ 棋子總數沒有憑空增減(沒有洩漏未 undo 的測試手殘留在盤面上)',
     `${countPieces(before.board)} → ${countPieces(after.board)}`);
+  await page.close();
+}
+
+console.log('\n── ⑦ 🧩 自訂殘局:真點擊擺子 → 開始 → 電腦真的從那個局面應手(2026-09-13 使用者要的新功能)──');
+{
+  /* 全程真點擊(調色盤是 DOM 鈕用 page.click;棋盤格用 screenPosFor 算真實像素再 page.mouse.click)。
+     擺一個最小殘局:紅帥 (4,9)、黑將 (3,0)、紅俥 (0,1)。輪紅走、玩家執紅。
+     ⚠ 選手機橫向 + 選單展開:調色盤展開時最上面那排也要點得到 —— 這正是 0913 把舞台
+       挪到選單列底下的理由;以前選單蓋著的那排點下去會點到選單。 */
+  const page = await open(PHONE_LANDSCAPE);
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.waitForFunction(() => window.__anchess && window.__anchess.screenPosFor(4, 0) !== null, null, { timeout: 10000 }).catch(() => {});
+  /* ⚠ 選單列有 0.3s 的 CSS transition,而舞台是「從選單列底下開始」—— 訊息一出現/一消失,
+       選單變高變矮、畫布跟著搬、相機跟著重 fit,這 300ms 內算出來的螢幕座標下一幀就不準了
+       (第一版就是這樣:錯誤訊息剛冒出來就點 (1,9),點到的是搬家前的位置)。
+       ⇒ 先等「畫布位置 + 相機位置」連續兩次量到一樣才算穩,再算座標、再點。 */
+  const settle = async () => {
+    await page.waitForFunction(() => {
+      const c = document.querySelector('canvas').getBoundingClientRect();
+      const t = window.__anchess.camTarget || {};
+      const now = [c.top, c.height, window.__anchess.camDistance, t.z].map((v) => Math.round((v || 0) * 100)).join(',');
+      const same = window.__settleLast === now;
+      window.__settleLast = now;
+      return same;
+    }, null, { timeout: 5000, polling: 120 }).catch(() => {});
+  };
+  const clickCell = async (x, y) => {
+    await settle();
+    const pos = await page.evaluate(([px, py]) => window.__anchess.screenPosFor(px, py), [x, y]);
+    if (pos) await page.mouse.click(pos.x, pos.y);
+    return pos;
+  };
+  const fen = () => page.evaluate(() => window.__anchess.fen);
+  /* 按調色盤 → 等那顆真的亮起(.on)再往下:驗「按了之後真的選到」,不是只驗「按過」 */
+  const pick = async (piece) => {
+    await page.locator(`#editor .pal-btn[data-piece="${piece}"]`).click();
+    await page.locator(`#editor .pal-btn[data-piece="${piece}"].on`).waitFor({ state: 'visible', timeout: 3000 });
+  };
+  const waitFen = (want) => page.waitForFunction((f) => window.__anchess.fen === f, want, { timeout: 5000 }).then(() => true).catch(() => false);
+
+  await page.locator('#editorButton').click();
+  await page.locator('#editor').waitFor({ state: 'visible', timeout: 5000 });
+  ok(await page.evaluate(() => window.__anchess.editing) === true, '★ 按「🧩 自訂殘局」進了編輯模式');
+  await page.locator('#editor button', { hasText: '清空' }).click();
+  ok(await waitFen('9/9/9/9/9/9/9/9/9/9 w'), '「清空」之後盤面真的空了', await fen());
+
+  await pick('K');
+  await clickCell(4, 9);
+  ok(await waitFen('9/9/9/9/9/9/9/9/9/4K4 w'), '★ 選紅帥、點 (4,9) ⇒ 帥放上去了', await fen());
+  await pick('k');
+  const pTop = await clickCell(3, 0);
+  ok(await waitFen('3k5/9/9/9/9/9/9/9/9/4K4 w'), '★★ 選黑將、點最上面那排 (3,0) ⇒ 放上去了(選單展開時最上排也點得到)', JSON.stringify({ pTop, fen: await fen() }));
+  await pick('R');
+  await clickCell(0, 1);
+  ok(await waitFen('3k5/R8/9/9/9/9/9/9/9/4K4 w'), '★ 選紅俥、點 (0,1) ⇒ 放上去了', await fen());
+  // 🗑 拿掉再放回
+  await pick('erase');
+  await clickCell(0, 1);
+  ok(await waitFen('3k5/9/9/9/9/9/9/9/9/4K4 w'), '★ 🗑 再點那顆俥 ⇒ 拿掉了', await fen());
+  await pick('R');
+  await clickCell(0, 1);
+  await waitFen('3k5/R8/9/9/9/9/9/9/9/4K4 w');
+
+  // 不合規則要被擋:把帥挪出九宮(再放一顆帥在 (1,9) ⇒ 兩個帥)
+  await pick('K');
+  await clickCell(1, 9);
+  await waitFen('3k5/R8/9/9/9/9/9/9/9/1K2K4 w');
+  await page.locator('#editorStart').click();
+  await page.locator('#editMsg.bad').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  const msg = await page.locator('#editMsg').textContent().catch(() => '');
+  ok(await page.evaluate(() => window.__anchess.editing) === true && /只能有一個帥|九宮/.test(msg),
+    '★★ 兩個帥按「開始」被擋住、留在編輯模式、講得出理由', msg);
+  await pick('erase');
+  await clickCell(1, 9);
+  ok(await waitFen('3k5/R8/9/9/9/9/9/9/9/4K4 w'), '拿掉多的那顆帥', await fen());
+
+  // 開始對弈 → 玩家(紅)走俥 (0,1)→(0,0) 從遠處將軍 → 黑方唯一合法應手是將 (3,0)→(3,1)
+  //   ⚠ 第一版走 (3,1) 貼著將將軍,被將直接吃掉 —— 那是 AI 對、測試錯(留著這句免得再踩)。
+  //   (4,0) 會和紅帥 (4,9) 照面、(2,0) 出九宮,所以黑方只剩一手 ⇒ 結果是確定的,可以斷言整串 FEN。
+  await page.locator('#editorStart').click();
+  await page.waitForFunction(() => window.__anchess.editing === false, null, { timeout: 5000 }).catch(() => {});
+  ok(await page.evaluate(() => window.__anchess.editing) === false, '★ 「▶ 開始對弈」離開編輯模式');
+  ok(await page.evaluate(() => window.__anchess.engine.turn === 'w' && window.__anchess.playerColor === 'w'), '輪紅走、玩家執紅');
+  await clickCell(0, 1);
+  await page.waitForFunction(() => window.__anchess.selected && window.__anchess.selected[0] === 0 && window.__anchess.selected[1] === 1, null, { timeout: 5000 })
+    .then(() => ok(true, '點俥選得起來(編輯模式真的關了,點擊回到下棋)'))
+    .catch(() => ok(false, '點俥選得起來', '沒選中'));
+  await clickCell(0, 0);
+  const done = await page.waitForFunction(() => window.__anchess.engine.turn === 'w' && window.__anchess.fen !== '3k5/R8/9/9/9/9/9/9/9/4K4 w', null, { timeout: 8000 })
+    .then(() => true).catch(() => false);
+  const after = await page.evaluate(() => ({ fen: window.__anchess.fen, turn: window.__anchess.engine.turn }));
+  ok(done && after.turn === 'w', '★★ 俥走到 (0,0) 將軍,黑方真的應了一手、輪回紅方', JSON.stringify(after));
+  ok(after.fen === 'R8/3k5/9/9/9/9/9/9/9/4K4 w',
+    '★★ 黑方走的是唯一合法的一手(將 (3,0)→(3,1);(4,0) 照面、(2,0) 出九宮都不准)—— 引擎在自訂局面上規則照樣對', after.fen);
+  ok(errors.length === 0, '★★ 整段零 JS 例外', errors.join(' | '));
   await page.close();
 }
 
