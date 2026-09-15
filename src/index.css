@@ -8,7 +8,13 @@ html,
   margin: 0;
   padding: 0;
   width: 100vw;
+  /* v1(2026-09-15,全艦隊 100vh 掃描 — 幻影西洋棋 v13 同款三層退路):
+     LINE / 自訂分頁 WebView 裡 100vh 是「連網址列一起算」的大視窗,比看得到的區域高,body overflow:hidden 又捲不到
+     ⇒ #appVerBadge / 棋盤下緣會掉到畫面外。100dvh(動態視窗)> JS 量到的 --app-h(index.html 開頭腳本,visualViewport
+     / innerHeight,resize 時更新)> 100vh 保底。 */
   height: 100vh;
+  height: 100dvh;
+  height: var(--app-h, 100dvh);
   overflow: hidden;
   background: #1a1a2e;
 }

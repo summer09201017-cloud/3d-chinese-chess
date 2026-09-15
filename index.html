@@ -54,6 +54,27 @@
 </style>
 </head>
   <body>
+    <!-- 📏 --app-h = 真的看得到的視窗高(2026-09-15,全艦隊 100vh 掃描,同 3dchess-an v13 款):
+         LINE / 自訂分頁的 WebView 裡 100vh 比可見區高,底部工具列 / 版本徽章會掉到畫面外。
+         visualViewport.height 在這些容器裡才是對的;第一幀就量,resize / 轉向 / 網址列收合都重量。 -->
+    <script>
+      (function () {
+        var last = 0;
+        function fit () {
+          try {
+            var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 0;
+            if (h > 200 && Math.abs(h - last) >= 1) {
+              last = h;
+              document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
+            }
+          } catch (e) {}
+        }
+        fit();
+        addEventListener('resize', fit);
+        addEventListener('orientationchange', function () { setTimeout(fit, 120); });
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+      })();
+    </script>
     <div id="root"></div>
     <!-- 🏷 版本徽章(艦隊鐵則⑦):內容由 src/App.jsx 從 src/version.js 填,頁面不寫死版號 -->
     <div id="appVerBadge"></div>
