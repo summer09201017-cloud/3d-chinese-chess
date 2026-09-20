@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
-import { fitCamera as applyFit } from './fitCamera';
+import { fitCamera as applyFit, DIR_3D_ELEVATION_DEG } from './fitCamera';
 import { gridToWorld, worldToGrid } from './boardLayout.js';
 
 /* 📝 改版簡歷的文案用 `**粗體**` 標重點,但這裡是 React 的 `{c.text}` = **純文字**
@@ -50,7 +50,7 @@ const IN_APP = (() => {
        · 只是尺寸變了(轉向、拖窗)⇒ **保留使用者轉到的角度**,只重算距離
          (轉了半天結果一轉向就被拉回正面 = 比不 fit 還討厭)
    ⚠ 一個 effect 用 [size, is2D] 當 deps 是分不出「誰變了」的 —— 那正是會寫錯的地方。 */
-function FitCamera({ is2D, scale, controlsRef, fitRef }) {
+function FitCamera({ is2D, scale, controlsRef, fitRef, refitRef }) {
   const camera = useThree((s) => s.camera);
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
@@ -73,6 +73,9 @@ function FitCamera({ is2D, scale, controlsRef, fitRef }) {
        畫面因此整個被拉扁。改成每次 render 完都刷新 fitRef.current(不放進上面那個
        只認 [camera, is2D] 的 effect),按鈕永遠拿得到當下最新的 width/height/is2D。 */
   useEffect(() => { if (fitRef) fitRef.current = () => run(false); });
+  /* 0920 補:視角工具列改完角度要「保留方向、只重算距離與注視點」(= run(true)),
+     和上面 fitRef 同一個理由每次 render 都刷新,免得關住舊的 width/height。 */
+  useEffect(() => { if (refitRef) refitRef.current = () => run(true); });
 
   return null;
 }
@@ -99,6 +102,69 @@ const savePuzzles = (list) => {
 import { Board } from './components/Board';
 import { Piece } from './components/Piece';
 import { VERSION, DATE, CHANGELOG } from './version';
+import { mountViewKit, orbitAdapter } from './view-kit.js';
+
+/* 🎥 3D 時 OrbitControls 的極角下限(極角 = 90° − 俯角)。
+   2026-09-20:視角工具列多了「正俯視 88°」預設與 20~88° 的俯視角度滑桿 ⇒ 原本的 π/36(5°,俯角最多 85°)
+   會把 88° 夾成 85°,滑桿拉到底畫面卻不動(0910 那條「設了不代表生效」的同族)。
+   放寬到 0.02 rad(≈1.1°,俯角最多 88.9°);不設 0 是離正上方的萬向鎖遠一點。2D 的 0.01 不動。 */
+const MIN_POLAR_3D = 0.02;
+
+/* 🎥 視角工具列(2026-09-20 使用者拍板:六款 3D 棋類「預設三段 + 滑桿微調 + 換邊 + 重置」長一樣)。
+   UI 與角度數學在 src/view-kit.js —— 那是 board3d-kit 共用資產的**複本,不要在這裡改它**,要改就改源頭再複製回來。
+   ★ adapter 只建一份、放在 App 的 ref 裡:手機面板「收起/展開」會把這個元件整個卸載重掛,
+     若每次重建 adapter,「開場方向 = 水平 0°」會被記成當下轉到的角度,換邊/滑桿讀數就漂了。
+   ★ 每次改角度後叫 refit(keepDirection):照新角度重算距離與注視點 —— 低角度(對局視角 34°)時
+     棋盤前後拉長,不重算就把邊路切掉(0909「九路全看得到 > 中間幾路很大」那條鐵則)。
+   ★ controls 是 R3F 另一個 root 裡掛上來的,比這個元件**晚約一秒**才有 ⇒ 工具列的 DOM 一掛就掛(面板高度當場定案),
+     相機那一頭用「懶 adapter」等 controls 出現再接上。0920 第一版是「等 controls 出現才掛 DOM」,結果手機橫向的面板
+     在載入一秒後才長高 83px,棋盤跟著再縮一次,check-mobile ①③ 剛好量在那一瞬就紅了(控制組線上全綠 ⇒ 是這裡引入的)。 */
+function ViewKit({ controlsRef, adapterRef, resetRef, refitRef }) {
+  const boxRef = useRef(null);
+  useEffect(() => {
+    if (!adapterRef.current) adapterRef.current = makeLazyOrbitAdapter({ controlsRef, resetRef, refitRef });
+    const kit = mountViewKit(boxRef.current, adapterRef.current);
+    return () => kit.destroy();
+  }, [controlsRef, adapterRef, resetRef, refitRef]);
+  return <div className="view-kit-box" ref={boxRef} />;
+}
+
+/* 相機 adapter 的「懶」版本:接上 OrbitControls 之前 get() 回開場預設(水平 0 / 俯角 DIR_3D_ELEVATION_DEG)、
+   set/reset 不動作;controls 一出現(100ms 輪詢)就建真的 orbitAdapter、把 kit 註冊的 onChange 接上並立刻同步一次滑桿。
+   每次 set 之後叫 refit(保留方向、只重算距離與注視點)。同一份 adapter 跨面板收起/展開活著,「開場方向 = 0°」不漂。 */
+function makeLazyOrbitAdapter({ controlsRef, resetRef, refitRef }) {
+  let base = null;       // orbitAdapter 實例(綁著某一個 controls)
+  let listener = null;   // 目前掛著的 kit 註冊的 onChange 回呼(kit 卸載就清掉)
+  let off = null;        // 解除 controls 'change' 監聽
+  const attach = () => { if (base && listener && !off) off = base.onChange(listener); };
+  const ensure = () => {
+    const controls = controlsRef.current;
+    if (!controls || !controls.object) return null;
+    if (!base || base.controls !== controls) {
+      if (off) { off(); off = null; }
+      base = orbitAdapter({
+        THREE, camera: controls.object, controls,
+        reset: () => { if (resetRef.current) resetRef.current(); },
+      });
+      base.controls = controls;
+      attach();
+      if (listener) listener();   // 滑桿從預設值換成相機真正的角度
+    }
+    return base;
+  };
+  return {
+    get() { const b = ensure(); return b ? b.get() : { yaw: 0, pitch: DIR_3D_ELEVATION_DEG }; },
+    set(s) { const b = ensure(); if (!b) return; b.set(s); if (refitRef.current) refitRef.current(); },
+    reset() { const b = ensure(); if (b) b.reset(); else if (resetRef.current) resetRef.current(); },
+    onChange(cb) {
+      listener = cb;
+      ensure();
+      attach();
+      const poll = setInterval(() => { if (ensure()) clearInterval(poll); }, 100);
+      return () => { clearInterval(poll); listener = null; if (off) { off(); off = null; } };
+    },
+  };
+}
 
 /* 💡 提示的標記:紫色。
    綠色已經是「這格我可以走」(ValidMoveIndicator)、選中的棋子也有自己的樣子 ——
@@ -220,6 +286,9 @@ function App() {
          「直向兩側被切、邊路砲馬只剩半顆」的病根之一(寫死的距離只有寬螢幕裝得下)。
          **不要再把座標寫回來**;要改角度請改 fitCamera.js 的 DIR_2D / DIR_3D。 */
   const fitRef = useRef(null);   // <FitCamera> 掛上來的「重新 fit」函式,給 resetCamera 用
+  const refitRef = useRef(null);       // <FitCamera> 的 run(true):保留方向只重算距離,視角工具列改完角度用
+  const resetRef = useRef(null);       // 每次 render 指向最新的 resetCamera(給 <ViewKit> 的 adapter 用,deps 才穩)
+  const viewAdapterRef = useRef(null); // <ViewKit> 的相機 adapter,只建一份(面板收起再展開不重建,開場方向才不漂)
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -685,6 +754,7 @@ function App() {
     if (fitRef.current) fitRef.current();
     else if (controlsRef.current) controlsRef.current.update();
   };
+  resetRef.current = resetCamera;
 
   return (
     <div className="app-container">
@@ -804,7 +874,6 @@ function App() {
               <button onClick={undo}>悔棋 (Undo)</button>
               <button onClick={saveGame}>存檔 (Save)</button>
               <button onClick={loadGame}>讀檔 (Load)</button>
-              <button onClick={resetCamera} style={{ background: '#607D8B' }}>重置視角 (Reset View)</button>
               {/* 🔄 手機上沒有下拉更新可用(整個視窗給了棋盤、頁面不可捲)⇒ 用這顆代替。 */}
               <button onClick={forceRefresh} style={{ background: '#009688' }} title="抓取最新版本並重新整理">🔄 更新 (Refresh)</button>
               {/* 📱 內建瀏覽器(LINE/FB/IG/微信)裡裝不了 ⇒ 不留一顆按了沒反應的鈕,
@@ -818,6 +887,10 @@ function App() {
                 <button onClick={installApp} style={{ background: '#4CAF50' }}>安裝 APP (Install)</button>
               )}
             </div>
+            {/* 🎥 視角工具列(取代原本那顆「重置視角」鈕)。2D 模式不掛:2D 的鏡頭釘死在正上方,轉不了。 */}
+            {!is2D && (
+              <ViewKit controlsRef={controlsRef} adapterRef={viewAdapterRef} resetRef={resetRef} refitRef={refitRef} />
+            )}
             </>
             )}
           </>
@@ -831,7 +904,7 @@ function App() {
             R3F 的 Canvas 填滿這個 div,尺寸一變 <FitCamera> 就重算 —— 不必自己聽 resize。 */}
       <div className="stage" id="stage" style={{ top: isMobile ? overlayH : 0 }}>
       <Canvas shadows camera={{ position: [0, 8, 8], fov: isMobile ? 55 : 45 }}>
-        <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} />
+        <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} refitRef={refitRef} />
         <color attach="background" args={['#2c3e50']} />
         <ambientLight intensity={0.5} />
         <directionalLight
@@ -895,7 +968,7 @@ function App() {
           enablePan={false}
           enableRotate={true}
           rotateSpeed={IS_COARSE_POINTER ? 0.2 : 1.0}
-          minPolarAngle={is2D ? 0.01 : Math.PI / 36}
+          minPolarAngle={is2D ? 0.01 : MIN_POLAR_3D}
           maxPolarAngle={is2D ? 0.01 : Math.PI / 2.5}
           minDistance={5}
           maxDistance={25}

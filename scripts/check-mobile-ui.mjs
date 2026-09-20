@@ -95,7 +95,9 @@ console.log('\n── ② 🎥 轉向之後按「重置視角」,相機比例要
   await page.waitForTimeout(500);
   /* ⚠ 不可以用 `text=重置視角`:改版簡歷裡也寫著這四個字(而且排在前面),
        會點到那段說明文字而不是按鈕(0910 寫這支時當場踩到)。只認 <button>。 */
-  await page.locator('button', { hasText: '重置視角' }).first().click();
+  /* 0920:「重置視角」搬進視角工具列(src/view-kit.js),鈕上有 data-vk-reset,直接認它。 */
+  await page.waitForSelector('.view-kit [data-vk-reset]', { timeout: 10000 });
+  await page.locator('.view-kit [data-vk-reset]').click();
   await page.waitForTimeout(500);
 
   const { cam, canvas } = await page.evaluate(() => ({
@@ -328,6 +330,56 @@ console.log('\n── ⑦ 🧩 自訂殘局:真點擊擺子 → 開始 → 電�
   ok(after.fen === 'R8/3k5/9/9/9/9/9/9/9/4K4 w',
     '★★ 黑方走的是唯一合法的一手(將 (3,0)→(3,1);(4,0) 照面、(2,0) 出九宮都不准)—— 引擎在自訂局面上規則照樣對', after.fen);
   ok(errors.length === 0, '★★ 整段零 JS 例外', errors.join(' | '));
+  await page.close();
+}
+
+console.log('\n── ⑨ 🎥 視角工具列(0920 六款 3D 棋類統一:預設三段 + 滑桿 + 換邊 + 重置)──');
+{
+  /* 全程真點擊 DOM 鈕;角度一律量 window.__anchess.camElevation(實際渲染的相機),不信滑桿自己顯示的數字。 */
+  const page = await open(PHONE_LANDSCAPE);
+  await page.waitForFunction(() => window.__anchess && window.__anchess.camElevation !== null, null, { timeout: 20000 }).catch(() => {});
+  const mounted = await page.waitForSelector('.view-kit [data-vk-reset]', { timeout: 10000 }).then(() => true).catch(() => false);
+  ok(mounted, '★ 視角工具列掛上了(.view-kit)');
+  const labels = await page.locator('.view-kit [data-vk-view]').allTextContents();
+  ok(labels.join('|') === '斜俯視|正俯視|對局視角', '★ 三顆預設鈕字面:斜俯視 / 正俯視 / 對局視角', labels.join('|'));
+
+  // 真點「正俯視」→ 實際俯角要到 88°(0920 把 minPolarAngle 從 5° 放寬到 0.02 rad;夾住的話會停在 85°)
+  await page.locator('.view-kit [data-vk-view="flat"]').click();
+  await page.waitForTimeout(700);
+  const e88 = await page.evaluate(() => window.__anchess.camElevation);
+  ok(e88 !== null && Math.abs(e88 - 88) < 1.5,
+    '★★ 按「正俯視」實際渲染俯角 = 88°(不是被 minPolarAngle 夾在 85°)', '量到 ' + (e88 === null ? 'null' : e88.toFixed(1) + '°'));
+  const pitchVal = await page.locator('.view-kit [data-vk-range="pitch"]').inputValue();
+  ok(pitchVal === '88', '★ 俯視角度滑桿跟著顯示 88', pitchVal);
+  const pressed = await page.locator('.view-kit [data-vk-view="flat"]').getAttribute('aria-pressed');
+  ok(pressed === 'true', '★ 「正俯視」鈕亮起(aria-pressed)', String(pressed));
+
+  // 換邊 → 水平滑桿 180
+  await page.locator('.view-kit [data-vk-flip]').click();
+  await page.waitForTimeout(700);
+  const yawVal = await page.locator('.view-kit [data-vk-range="yaw"]').inputValue();
+  ok(yawVal === '180', '★★ 按「換邊」水平旋轉滑桿 = 180', yawVal);
+
+  // 對局視角 34° → 改了角度要重算距離:四個角落的棋位仍在畫面內(低角度最容易切到前後排)
+  await page.locator('.view-kit [data-vk-view="sit"]').click();
+  await page.waitForTimeout(700);
+  const e34 = await page.evaluate(() => window.__anchess.camElevation);
+  ok(e34 !== null && Math.abs(e34 - 34) < 1.5, '★ 按「對局視角」實際俯角 = 34°', '量到 ' + (e34 === null ? 'null' : e34.toFixed(1) + '°'));
+  const corners = await page.evaluate(() => [[0, 0], [8, 0], [0, 9], [8, 9]].map(([x, y]) => window.__anchess.screenPosFor(x, y)));
+  const vp = page.viewportSize();
+  ok(corners.every((p) => p && p.x >= 0 && p.x <= vp.width && p.y >= 0 && p.y <= vp.height),
+    '★★ 低角度 + 換邊之後,四個角落的棋位仍全在畫面內(改角度有重算距離,沒切邊路)',
+    JSON.stringify(corners.map((p) => p && [Math.round(p.x), Math.round(p.y)])));
+
+  // 重置 → 回開場 70° / 水平 0
+  await page.locator('.view-kit [data-vk-reset]').click();
+  await page.waitForTimeout(700);
+  const e70 = await page.evaluate(() => window.__anchess.camElevation);
+  const yaw0 = await page.locator('.view-kit [data-vk-range="yaw"]').inputValue();
+  ok(e70 !== null && Math.abs(e70 - 70) < 1.5 && yaw0 === '0', '★★ 「重置視角」回開場:俯角 70° / 水平 0', 'elev=' + (e70 === null ? 'null' : e70.toFixed(1)) + ' yaw=' + yaw0);
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  ok(!overflow, '★ 加了工具列後頁面沒有橫向溢出');
   await page.close();
 }
 

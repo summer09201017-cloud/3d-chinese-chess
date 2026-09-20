@@ -254,3 +254,29 @@ h1 {
   line-height: 1.6;
   text-align: left;
 }
+
+/* 🎥 視角工具列(2026-09-20,六款 3D 棋類統一:預設三段 + 滑桿微調 + 換邊 + 重置)。
+   UI 與樣式本體在 src/view-kit.js(掛上去時自己注入一段 <style>),這裡只調它在**本站面板裡**的尺寸與配色。
+   ⚠ 一定要寫在 index.css(App.css 是死檔,見上面兩段)。 */
+.view-kit-box { margin-top: 10px; width: 100%; min-width: 0; }
+.ui-overlay .view-kit {
+  --vk-accent: #2196F3;                 /* 和「切換 2D/3D 視角」同一個藍 */
+  --vk-bg: rgba(255, 255, 255, 0.12);
+  --vk-line: rgba(255, 255, 255, 0.3);
+}
+/* 桌機面板 max-width 250px:三顆預設鈕一排,字縮到 13px 才不會把「對局視角」切成「對局視…」 */
+.ui-overlay .vk-btn { font-size: 13px; }
+@media (max-width: 768px), (max-height: 500px) {
+  /* 手機:面板是頂欄,高度就是棋盤被吃掉的高度 ⇒ 排成 2×2(左上預設三顆 / 右上 換邊+重置 / 下排兩條滑桿),
+     鈕 34px、滑桿 28px(本站手機鈕本來就是 10px 字的緊湊版,照它的比例) */
+  .view-kit-box { margin-top: 0; }
+  .ui-overlay .view-kit { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; }
+  .ui-overlay .vk-title { display: none; }
+  .ui-overlay .vk-presets { grid-area: 1 / 1; gap: 4px; }
+  .ui-overlay .vk-actions { grid-area: 1 / 2; gap: 4px; }
+  .ui-overlay .view-kit > .vk-slider:nth-of-type(1) { grid-area: 2 / 1; }
+  .ui-overlay .view-kit > .vk-slider:nth-of-type(2) { grid-area: 2 / 2; }
+  .ui-overlay .vk-btn { min-height: 34px; font-size: 11px; padding: 4px 2px; }
+  .ui-overlay .vk-slider > span { font-size: 10px; }
+  .ui-overlay .vk-slider input[type=range] { min-height: 28px; }
+}
