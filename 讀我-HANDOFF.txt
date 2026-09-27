@@ -33,7 +33,8 @@
   ★ 三條踩到:(a) R3F 站不用 import map / three-shim(npm three 直接吃);(b) 這站的橫式 fit 太緊,「頭頂當第 9 個角 + 注視點可往遠邊偏」才是解,純拉遠不是;
     (c) `.controls select` 三格在手機頂欄並排,標籤帶臉不另佔高度(頂欄高一 px 棋盤就少一 px)。
   驗:npm test 全綠(ai 29 / version 78 / legality 20 / fit 40 / position 44);lint 0 錯;browser-check 39/0;check-mobile-ui 50/0;三視口截圖目視(貓整隻入鏡)。
-  部署:npm run deploy(三站同指紋);線上見下方「線上驗」。
+  部署:npm run deploy ⇒ 三站同指紋 assets/index-CIChBFGZ.js;線上驗:voice/manifest.json 200 真內容、cat-check.mp3 11KB、sw.js precache 含 32 支 mp3、
+    CHECK_URL=https://3d-chinese-chess.pages.dev browser-check 39/0。commit cc7ed6a(+ 本行的文件補記)。
 
 ★★★★★ 2026-09-20(agape250 機・Fable 5.1・0920-3d棋類旋轉 場)🎥 視角工具列統一(v17)★★★★★
   由來:使用者看了 gomoku3d(只有三段預設視角、不能自由轉)問「3D 象棋與西洋棋可不可以手動調旋轉角度」,盤點後拍板
