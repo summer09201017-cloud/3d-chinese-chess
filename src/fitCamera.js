@@ -125,13 +125,14 @@ export function requiredDistance({ fovDeg, aspect, dir, scale = 1, margin = 1.04
  * 8 個角投到相機平面後,最外側那一個佔畫面半寬/半高的比例(1 = 剛好碰到邊,>1 = 被裁)。
  * 和 test/fit.mjs 的 project() 是同一套算法 —— 這裡是「拿它來找距離」,那裡是「拿它來驗」。
  */
-export function worstCorner({ fovDeg, aspect, dir, dist, target = [0, 0, 0], scale = 1, board = BOARD }) {
+export function worstCorner({ fovDeg, aspect, dir, dist, target = [0, 0, 0], scale = 1, board = BOARD, points = [] }) {
   const { d, right, up } = axes(dir);
   const cam = [target[0] + d[0] * dist, target[1] + d[1] * dist, target[2] + d[2] * dist];
   const tanV = Math.tan((fovDeg * Math.PI) / 180 / 2);
   const tanH = tanV * aspect;
   let worst = 0;
-  for (const c of corners(board, scale)) {
+  /* points = 🐾 額外取景點(世界座標,已含 scale;例如對手頭頂)—— 當第 9 個角一起算 */
+  for (const c of [...corners(board, scale), ...points]) {
     const v = sub(c, cam);
     const depth = -dot(v, d);              // 相機看的方向是 -d
     if (depth <= 1e-6) return Infinity;    // 在相機後面 = 一定看不到
@@ -165,20 +166,58 @@ export function worstCorner({ fovDeg, aspect, dir, dist, target = [0, 0, 0], sca
 export const LANDSCAPE_MARGIN = 1.03;
 export const LANDSCAPE_SHIFT_MAX = 2.5;     // 注視點最多往玩家這側偏多少(掃描上限;844×390 落在 +1.0、1024×768 約 +1.6)
 
-export function fitLandscape({ fovDeg, aspect, dir, scale = 1, board = BOARD, margin = LANDSCAPE_MARGIN }) {
+/** 固定注視點,二分搜「8 個角(+ 額外點)都不裁」的最小距離 */
+export function minDistAt({ fovDeg, aspect, dir, target, scale = 1, board = BOARD, points = [] }) {
+  let lo = 0.5, hi = 80;
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2;
+    if (worstCorner({ fovDeg, aspect, dir, dist: mid, target, scale, board, points }) <= 1) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+export function fitLandscape({ fovDeg, aspect, dir, scale = 1, board = BOARD, margin = LANDSCAPE_MARGIN, points = [] }) {
   let best = null;
   const step = 0.05 * scale;
-  for (let tz = 0; tz <= LANDSCAPE_SHIFT_MAX * scale + 1e-9; tz += step) {
+  /* 🐾 有額外點(對手頭頂在遠邊上方)時,注視點也允許往**遠邊**偏(tz < 0):把棋盤在畫面裡往下挪、把上面讓給牠的頭,
+     比純拉遠省得多(0928 實測:只准 tz ≥ 0 要 1.50 倍距離,准了負的降到 ~1.2 倍)。沒額外點時掃描範圍照舊(0913 那套一個數字不變)。 */
+  const tzMin = points.length ? -LANDSCAPE_SHIFT_MAX * scale : 0;
+  for (let tz = tzMin; tz <= LANDSCAPE_SHIFT_MAX * scale + 1e-9; tz += step) {
     const target = [0, 0, tz];
-    let lo = 0.5, hi = 80;                 // 二分搜「worst ≤ 1」的最小距離
-    for (let i = 0; i < 32; i++) {
-      const mid = (lo + hi) / 2;
-      if (worstCorner({ fovDeg, aspect, dir, dist: mid, target, scale, board }) <= 1) hi = mid;
-      else lo = mid;
-    }
+    const hi = minDistAt({ fovDeg, aspect, dir, target, scale, board, points });
     if (!best || hi < best.dist) best = { dist: hi, tz };
   }
   return { dist: best.dist * margin, target: [0, 0, best.tz] };
+}
+
+/* 🐾 額外取景點(2026-09-28,動物對手;照 gomoku3d board3d.fitCamera 的 fitExtra):
+   站方給一組世界座標點(對手的頭頂 + 耳朵餘裕),距離從算好的 dist 往外二分,讓每個點都落在 (±EXTRA_EDGE_X, ±EXTRA_EDGE_Y) 內。
+   ★ 上限 EXTRA_MAX = 1.28 倍(棋盤最多縮 ~22%):棋盤是主角、對手只是配角 —— 讓不下就讓牠被切一點頭,不讓棋盤變小到點不到。
+   ★ 純陣列數學(跟上面同一套 axes),test/fit.mjs 可以在 Node 直接驗;extra 回空陣列 = 跟以前完全一樣。 */
+export const EXTRA_MAX = 1.28;
+export const EXTRA_EDGE_X = 0.98;
+export const EXTRA_EDGE_Y = 0.97;
+export function pointRatio({ fovDeg, aspect, dir, dist, target, point }) {
+  const { d, right, up } = axes(dir);
+  const cam = [target[0] + d[0] * dist, target[1] + d[1] * dist, target[2] + d[2] * dist];
+  const tanV = Math.tan((fovDeg * Math.PI) / 180 / 2);
+  const tanH = tanV * aspect;
+  const v = sub(point, cam);
+  const depth = -dot(v, d);
+  if (depth <= 1e-6) return { x: Infinity, y: Infinity };
+  return { x: Math.abs(dot(v, right)) / (depth * tanH), y: Math.abs(dot(v, up)) / (depth * tanV) };
+}
+export function fitExtraDistance({ fovDeg, aspect, dir, dist, target, points, max = EXTRA_MAX }) {
+  const inside = (dd) => points.every((p) => {
+    const r = pointRatio({ fovDeg, aspect, dir, dist: dd, target, point: p });
+    return r.x <= EXTRA_EDGE_X && r.y <= EXTRA_EDGE_Y;
+  });
+  if (inside(dist)) return dist;
+  const maxD = dist * max;
+  if (!inside(maxD)) return maxD;
+  let lo = dist, hi = maxD;
+  for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (inside(mid)) hi = mid; else lo = mid; }
+  return hi;
 }
 
 /** controls.target 可能是 THREE.Vector3(有 set)也可能是測試用的 {x,y,z} */
@@ -197,8 +236,9 @@ function setTarget(controls, t) {
  * @param {number} o.aspect
  * @param {number} [o.scale]
  * @param {boolean} [o.keepDirection] true = 保留使用者轉到的角度,只重算距離(resize 用)
+ * @param {(dir:number[])=>number[][]} [o.extra] 🐾 額外取景點(世界座標;例如對手頭頂),距離最多拉到 EXTRA_MAX 倍
  */
-export function fitCamera(camera, controls, { is2D, aspect, scale = 1, keepDirection = false }) {
+export function fitCamera(camera, controls, { is2D, aspect, scale = 1, keepDirection = false, extra = null }) {
   if (!camera) return null;
   const target = controls && controls.target ? controls.target : { x: 0, y: 0, z: 0 };
 
@@ -217,13 +257,26 @@ export function fitCamera(camera, controls, { is2D, aspect, scale = 1, keepDirec
 
   let d;
   let tgt;
+  const pts = (!is2D && typeof extra === 'function' && extra(dir)) || [];   // 🐾 對手頭頂(2D 不管:正上方看不到牠)
   if (!is2D && aspect >= 1) {
-    const r = fitLandscape({ fovDeg: camera.fov, aspect, dir, scale });
-    d = r.dist;
-    tgt = r.target;
+    const r0 = fitLandscape({ fovDeg: camera.fov, aspect, dir, scale });
+    d = r0.dist;
+    tgt = r0.target;
+    if (pts.length) {
+      /* 🐾 橫式的注視點本來就往玩家這側偏、把遠邊頂到畫面上緣 ⇒ 光把距離拉遠救不回牠的頭(0928 實測 NDC 1.16,1.28 倍都不夠)。
+         改成把頭頂當第 9 個角**一起掃** —— 掃描會自己把注視點往回收、距離略增,頭與四角同時入鏡;
+         算出來超過 1.28 倍才退而求其次:注視點用有牠的那組、距離夾在 1.28 倍(四角一定在,牠被切一點頭)。 */
+      const r1 = fitLandscape({ fovDeg: camera.fov, aspect, dir, scale, points: pts });
+      if (r1.dist <= r0.dist * EXTRA_MAX) { d = r1.dist; tgt = r1.target; }
+      else {
+        tgt = r1.target;
+        d = Math.max(minDistAt({ fovDeg: camera.fov, aspect, dir, target: tgt, scale }) * LANDSCAPE_MARGIN, r0.dist * EXTRA_MAX);
+      }
+    }
   } else {
     d = requiredDistance({ fovDeg: camera.fov, aspect, dir, scale });
     tgt = [0, 0, 0];                       // 直向 / 2D:注視棋盤中心(從橫式轉回來時把偏移收掉)
+    if (pts.length) d = fitExtraDistance({ fovDeg: camera.fov, aspect, dir, dist: d, target: tgt, points: pts });   // 🐾 直向:只拉遠(上限 1.28)
   }
   setTarget(controls, tgt);
 

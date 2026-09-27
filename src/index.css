@@ -280,3 +280,12 @@ h1 {
   .ui-overlay .vk-slider > span { font-size: 10px; }
   .ui-overlay .vk-slider input[type=range] { min-height: 28px; }
 }
+
+/* 🐾 動物對手(2026-09-28):面板裡「🐾 對手」那一格跟另兩個 select 長一樣;手機頂欄是三格並排(.controls 的 flex),不另佔高度。
+   牠坐在相機對面 = 畫面正上方;桌機面板在左上角 250px 寬、手機的舞台從頂欄底下開始 ⇒ 兩種版面都不會蓋到臉(browser-check 🐾 量過)。
+   ⚠ 一定要寫在 index.css(App.css 是死檔)。 */
+#petLabel { display: block; }
+@media (max-width: 768px), (max-height: 500px) {
+  #petLabel { margin-top: 0 !important; }
+  #petLabel select { margin-top: 0 !important; }
+}

@@ -1,10 +1,39 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-20(agape250 機・Fable 5.1・0920-3d棋類旋轉 場)🎥 視角工具列統一:預設三段 + 滑桿 + 換邊 + 重置(v17;src/view-kit.js 是 board3d-kit 共用資產的複本)
+更新:2026-09-28(HFP 機・Fable 5.1・0928-3D動物對手-象棋家族-家裡 場)🐾 動物對手坐到你對面(v18;skill animal-opponent-kit 第七個活例,R3F 接法)
+// 原 更新:2026-09-20(agape250 機・Fable 5.1・0920-3d棋類旋轉 場)🎥 視角工具列統一:預設三段 + 滑桿 + 換邊 + 重置(v17;src/view-kit.js 是 board3d-kit 共用資產的複本)
 // 原 更新:2026-09-13 下午(HFP 機・Fable 5.1・0913-take-over 場)🎥 俯角改 70°(使用者更正:早上「朝玩家轉 5 度」被我讀反;v16)+ 🧩 自訂殘局 + 📐 注視投影中心、行距 0.92、舞台從選單列底下開始(v15)
 // 原 更新:2026-09-13(HFP 機・Fable 5.1・0913-take-over 場)🧩 自訂殘局 + 📐 橫式棋盤:朝玩家轉 5°、注視投影中心、行距 0.92、舞台從選單列底下開始(v15)
 // 原 更新:2026-09-10(agape250 機・Sonnet 5)🐛 修好黑方沒反應/棋盤憑空多子(v14,三站已部署:指紋 index-Urjh1ODy.js)
 ============================================================
+
+★★★★★ 2026-09-28(HFP 機・Fable 5.1・0928-3D動物對手-象棋家族-家裡 場)🐾 動物對手坐到你對面(v18)★★★★★
+  由來:0927 使用者看了 3D 麻將的三隻動物說「超級可愛」⇒ 固化 skill animal-opponent-kit,0928 掃象棋家族六站;本站是 R3F 站,接法跟 vanilla 站不同。
+  改動:
+    · 新檔 src/animals.js、src/voice.js(= skill assets **同一份,不在這裡改**;browser-check 🐾 逐位元對賬)、src/opponent.js(本站接線:誰坐 / 坐哪 / 讓位取景點 / 反應 / 閒聊 / probe)、
+      src/PetOpponent.jsx(Canvas 裡的殼:useThree 拿 scene/camera、useEffect 建拆、useFrame 每幀 update、props 變了重坐 + refit)、src/voicePhrases.js(4 隻 × 8 句象棋版)、
+      scripts/gen-voice.mjs(skill 同一份)→ public/voice/ 32 支 mp3 + manifest。
+    · 誰坐:難度 1~3 🐰 / 4~6 🐱 / 7~8 🐻 / 9~10 🦉(select 十檔分四段);2D 模式與 🧩 編輯殘局時收起(不讓位);本站永遠是你 vs 電腦,沒有 pvp。
+      座位永遠在相機對面(每幀量 OrbitControls 方位角 2° 一格重擺,🔃 換邊跟著);世界 Y-up、動物直接掛 scene(不進那個 scale group,半盤要乘 group scale)。
+    · App.jsx:petMode 三段(localStorage `3dcc-pet`)、面板多一格「🐾 對手:🐱 橘貓」select(標籤帶臉)、petRef 事件:你走完 → 吃子・將軍 gasp「哇」/ 否則 think;
+      電腦走完 → 將你的軍 hop「將軍!」/ 否則 place;syncBoard 四種結束 → 牠贏 win / 你贏 lose(petEndedRef 每局一次;重開 / 悔棋 / 讀檔 / 自訂局歸零);
+      __anchess 多 pet / petVoice / petMode / petOn 把手;body.pet-on。
+    · ★★ src/fitCamera.js(這站最花時間的一段):橫式 fitLandscape 把注視點往玩家偏、遠邊頂到畫面上緣,對手的頭(在遠邊上方)光拉遠救不回
+      (0.215 倍要 1.50 倍距離)⇒ ①頭頂當第 9 個角一起掃(worstCorner/minDistAt 多收 points)②有動物時掃描允許注視點往**遠邊**偏(tzMin < 0,
+      把棋盤在畫面裡往下挪、上面讓給牠)③還是超過 1.28 倍才退而求其次(注視點用有牠那組、距離夾 1.28,四角一定在、牠被切一點)④直向沿用 requiredDistance +
+      fitExtraDistance 只拉遠。動物縮到 **0.17 倍**(桌機 0.72 / 手機 0.60;頭 ≈ 1.6 顆棋子)⇒ 桌機 1.26 倍剛好在上限內、頭頂 NDC 0.93 三視口都在。
+      ⚠ 沒動物時掃描範圍照舊(tz ≥ 0),0913 那套數字一個不變(test/fit.mjs 40/0 沒動)。
+    · vite.config.js:workbox globPatterns 加 mp3/json(precache 48 項 1.9MB;預設 glob 只有 js/css/html,mp3 會漏、離線就啞)+ maximumFileSizeToCacheInBytes 4MB。
+    · scripts/browser-check.mjs +30(🐾 段:檔案對賬 / 引擎同 skill / 真 select 選三段與難度 / 坐對面 / 鐵則遍歷 / 頭在畫面裡 ×3 視口 / 臉沒被面板蓋 / 讓位 ≤25% /
+      真滑鼠走一手 figs.log 有 think+place / 姿勢手動推時間 / 換邊 / 對局視角 / 切 2D 收起再切回 / 三段 / 難度 9 🦉 / 人聲 runtime);
+      ★ goto 改「等 SW 接管再自己 reload 一次」—— networkidle 會被 HDR / 48 項預快取拖到超時,而 App 的 controllerchange 自動 reload 時機沒有準
+      (等 4 秒放行那版剛好 reload 在按提示之後、整段紅)。
+    · scripts/check-mobile-ui.mjs ③:「注視點往玩家偏 ≥ 0.4」改成先關動物量(0913 規矩沒變)、再開動物量「注視點往回收 + 頭在畫面裡」⇒ 50/0。
+    · src/version.js v18 簡歷白話;index.css #petLabel;serve-dist.mjs 加 mp3 MIME。
+  ★ 三條踩到:(a) R3F 站不用 import map / three-shim(npm three 直接吃);(b) 這站的橫式 fit 太緊,「頭頂當第 9 個角 + 注視點可往遠邊偏」才是解,純拉遠不是;
+    (c) `.controls select` 三格在手機頂欄並排,標籤帶臉不另佔高度(頂欄高一 px 棋盤就少一 px)。
+  驗:npm test 全綠(ai 29 / version 78 / legality 20 / fit 40 / position 44);lint 0 錯;browser-check 39/0;check-mobile-ui 50/0;三視口截圖目視(貓整隻入鏡)。
+  部署:npm run deploy(三站同指紋);線上見下方「線上驗」。
 
 ★★★★★ 2026-09-20(agape250 機・Fable 5.1・0920-3d棋類旋轉 場)🎥 視角工具列統一(v17)★★★★★
   由來:使用者看了 gomoku3d(只有三段預設視角、不能自由轉)問「3D 象棋與西洋棋可不可以手動調旋轉角度」,盤點後拍板

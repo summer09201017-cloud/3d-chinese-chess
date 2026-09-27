@@ -68,6 +68,9 @@ Netlify 一重新建置就會用 repo 的 `npm run build` 把 301 殼蓋回完�
   「▶ 開始對弈」直接跟電腦從這個局面下起;不合規則的局面(兩個帥、帥出九宮、兵卒站錯路、將帥照面、
   非走方被將軍…)開始前擋下並講理由。「💾 存」在這台裝置(localStorage,50 筆)、「🔗 分享」網址
   `?fen=<象棋 FEN>&me=w|b`,別人打開就是同一個局面。規則/序列化在 `src/game/position.js`,`test/position.mjs` 守。
+- 🐾 **動物對手**(2026-09-28,skill animal-opponent-kit):棋盤對面坐一隻會眨眼、會想棋、會說話的小動物——難度 1~3 🐰 / 4~6 🐱 / 7~8 🐻 / 9~10 🦉;
+  牠將軍喊「將軍!」、被吃子「哇」、贏了跳輸了低頭、等你太久會催;面板「🐾 對手」三段(會說話 / 不出聲 / 關,localStorage `3dcc-pet`);2D / 編輯殘局時收起。
+  人聲是 msedge-tts 預烤 mp3(`public/voice/`,進 SW precache),絕無 Web Speech。純觀感、不影響棋力。
 - 悔棋、3D 自由轉視角、PWA 可安裝可離線、⛶ 手機放大鈕。
 - 📐 手機橫式棋盤照「選單列以下看得到的區域」剛好裝滿(舞台從選單列底下開始;注視點對準投影中心,見 `src/fitCamera.js`)。
 
@@ -126,7 +129,9 @@ npm run deploy      # build → 推三站 → 驗三站指紋一致(見上面「
 | `src/game/ai.js` | 評估(子力 + PST)、`quiescence`、`searchAlphaBeta`、`getBestMoveAlphaBeta`(對手)、`getHintMove`(提示) |
 | `src/game/position.js` | 🧩 局面 ↔ FEN(`toFen`/`fromFen`)+ `validatePosition`(自訂殘局開始前的規則檢查) |
 | `src/boardLayout.js` | 棋盤版面單一真相(行距 0.92、格↔世界座標、棋子尺寸);格線/棋子/提示/點擊/相機五處共用 |
-| `src/fitCamera.js` | 相機 fit:直向 8 角精算、橫式 `fitLandscape`(注視點沿 z 掃 + 二分搜最小距離);純數學可在 Node 測 |
+| `src/fitCamera.js` | 相機 fit:直向 8 角精算、橫式 `fitLandscape`(注視點沿 z 掃 + 二分搜最小距離);🐾 `extra` 取景點(頭頂當第 9 個角、有動物時注視點可往遠邊偏、上限 1.28 倍);純數學可在 Node 測 |
+| `src/animals.js` `src/voice.js` | 🐾 動物引擎 / 🗣 人聲 runtime(與 skill animal-opponent-kit/assets **同一份,不要在這裡改**;browser-check 逐位元對賬) |
+| `src/opponent.js` `src/PetOpponent.jsx` `src/voicePhrases.js` | 本站的動物接線(誰坐 / 坐相機對面 / 讓位取景點 / 反應 / 閒聊 / probe)、Canvas 裡的 R3F 殼、四隻唸稿;`scripts/gen-voice.mjs` 烤 mp3 → `public/voice/` |
 | `test/ai.mjs` | `npm test`:提示品質(獨立裁判 `refQuiesce` 只看子力、只走吃子) |
 | `test/fit.mjs` / `test/position.mjs` | 棋盤裝得進畫面(8 角投影)+ 0913 四句話當地板 / FEN 往返 + 局面合法性 |
 | `scripts/check-mobile-ui.mjs` | 真瀏覽器手機版面 39 項(含 🧩 自訂殘局全真點擊流程) |

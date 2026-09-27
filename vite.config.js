@@ -8,6 +8,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      /* 🐾 動物人聲(public/voice/*.mp3 + manifest.json,0928)也要進 precache —— 預設 glob 只有 js/css/html,
+         漏了的話離線那次牠就啞了、而且零紅燈(baked-voice 0829 那條「手抄清單一定漏」在這裡是 glob 漏)。
+         上限放寬到 4MB:three + R3F + drei 的 index bundle 逼近 workbox 預設的 2MB 時會被**靜默略過**。 */
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,mp3,json}'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
       manifest: {
         name: '3D 象棋 (3D Chinese Chess)',
         short_name: '3D象棋',

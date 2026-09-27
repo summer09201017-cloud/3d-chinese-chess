@@ -129,9 +129,17 @@ console.log('\n── ③ 🎥 相機俯角「設了要真的生效」(不是只
     '★★ 實際渲染出來的俯角就是設定的 70°(0913 下午使用者「那站也要更俯視,改成 70 度」;沒有被 OrbitControls 的 minPolarAngle 夾掉)',
     '量到 ' + (elev === null ? 'null' : elev.toFixed(1) + '°'));
 
+  /* 🐾 0928:對手動物坐在遠邊、頭在遠邊上方 ⇒ 有牠時掃描會把注視點往**遠邊**收(tz 可為負)、把畫面上緣讓給牠的頭(fitCamera tzMin)。
+       0913 那條「往玩家這側偏 ≥ 0.4」是**沒有動物**時的規矩 ⇒ 先把牠關掉量一次(規矩沒變),再開回來量「頭真的在畫面裡」。 */
+  await page.selectOption('#petSelect', 'off');
+  await page.waitForTimeout(800);
   const tz = await page.evaluate(() => window.__anchess.camTarget && window.__anchess.camTarget.z);
   /* 70° 時掃描法收斂到 +0.50(57° 時 +1.0):角度越陡近排放大越少,不必偏那麼多。門檻 0.4,而且用 >=(0.5 浮點會是 0.4999…)。 */
-  ok(tz !== null && tz >= 0.4, '★ 橫式的注視點真的往玩家這側偏了(z=' + (tz === null ? 'null' : tz.toFixed(2)) + '),棋盤上下平均才能靠近', String(tz));
+  ok(tz !== null && tz >= 0.4, '★ 橫式(沒有動物時)的注視點真的往玩家這側偏了(z=' + (tz === null ? 'null' : tz.toFixed(2)) + '),棋盤上下平均才能靠近', String(tz));
+  await page.selectOption('#petSelect', 'voice');
+  await page.waitForTimeout(800);
+  const petHead = await page.evaluate(() => { const P = window.__anchess.pet; const t = window.__anchess.camTarget; return P && P.figure ? { ...P.probe().head, tz: t ? +t.z.toFixed(2) : null, visible: P.figure.group.visible } : null; });
+  ok(petHead && petHead.visible && petHead.inside, '🐾 開著動物:注視點往回收(z=' + (petHead ? petHead.tz : 'null') + ')、牠的頭在畫面裡(' + (petHead ? petHead.x + ', ' + petHead.y : 'null') + ')', JSON.stringify(petHead));
 
   /* 📐 0913:3D 舞台從選單列**底下**開始 —— 選單列不再蓋住最上面那排黑棋。
      量三件:①畫布頂緣 ≥ 選單列底緣(不重疊)②畫布高 = 視窗高 − 選單列高 ③最上面那排棋子

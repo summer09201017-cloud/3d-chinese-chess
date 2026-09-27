@@ -16,6 +16,7 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".mp3": "audio/mpeg",          // 🐾 動物人聲(0928)
 };
 
 createServer(async (req, res) => {

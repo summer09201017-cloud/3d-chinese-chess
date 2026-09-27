@@ -32,6 +32,11 @@ const IS_COARSE_POINTER = typeof window !== 'undefined'
   && typeof window.matchMedia === 'function'
   && window.matchMedia('(pointer: coarse)').matches;
 
+/* 🐾 減少動態(動物的呼吸 / 跳躍照這個收斂;模組層算一次) */
+const REDUCED_MOTION = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 const IN_APP = (() => {
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   if (/\bLine\//i.test(ua) || /\bLIFF\b/i.test(ua)) return { n: 'LINE', m: '右上角「⋯」→「用其他瀏覽器開啟」' };
@@ -50,13 +55,15 @@ const IN_APP = (() => {
        · 只是尺寸變了(轉向、拖窗)⇒ **保留使用者轉到的角度**,只重算距離
          (轉了半天結果一轉向就被拉回正面 = 比不 fit 還討厭)
    ⚠ 一個 effect 用 [size, is2D] 當 deps 是分不出「誰變了」的 —— 那正是會寫錯的地方。 */
-function FitCamera({ is2D, scale, controlsRef, fitRef, refitRef }) {
+function FitCamera({ is2D, scale, controlsRef, fitRef, refitRef, extraRef }) {
   const camera = useThree((s) => s.camera);
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
 
+  /* 🐾 extra = 動物對手的頭頂取景點(fitCamera.js 的 fitExtraDistance,距離最多拉 1.28 倍);沒動物就是空陣列 */
   const run = (keepDirection) => applyFit(camera, controlsRef.current, {
     is2D, scale, aspect: width / Math.max(1, height), keepDirection,
+    extra: extraRef ? extraRef.current : null,
   });
 
   // 角度歸位:掛載時 + 2D/3D 切換時。
@@ -103,6 +110,9 @@ import { Board } from './components/Board';
 import { Piece } from './components/Piece';
 import { VERSION, DATE, CHANGELOG } from './version';
 import { mountViewKit, orbitAdapter } from './view-kit.js';
+import { PetOpponent } from './PetOpponent.jsx';
+import { ANIMALS, animalFor, loadPetMode, savePetMode } from './opponent.js';
+import { createVoice } from './voice.js';
 
 /* 🎥 3D 時 OrbitControls 的極角下限(極角 = 90° − 俯角)。
    2026-09-20:視角工具列多了「正俯視 88°」預設與 20~88° 的俯視角度滑桿 ⇒ 原本的 π/36(5°,俯角最多 85°)
@@ -208,6 +218,17 @@ function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [is2D, setIs2D] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  /* 🐾 動物對手(2026-09-28,skill animal-opponent-kit 第七個活例;範式 3D-Xiangqi、gomoku3d):
+     三段 voice / mute / off(localStorage 3dcc-pet);難度決定哪一隻(1~3 🐰 / 4~6 🐱 / 7~8 🐻 / 9~10 🦉);2D / 編輯殘局時收起。
+     petRef = Canvas 裡 <PetOpponent> 建的 Opponent(純 three,不吃 React),走子 / 將軍 / 結束的反應從這裡 react 進去。 */
+  const [petMode, setPetModeState] = useState(loadPetMode);
+  const petRef = useRef(null);
+  const petFocusRef = useRef(null);
+  const petEndedRef = useRef(false);
+  const [petVoice] = useState(() => createVoice({ muted: () => false }));   // 本站沒有 🔊 開關 ⇒ 只看三段
+  const petExtraRef = useRef((dir) => (petRef.current ? petRef.current.fitPoints(dir) : []));
+  const setPetMode = (m) => { savePetMode(m); setPetModeState(m); };
+  const petKind = animalFor(difficulty);
 
   /* 🏷 右下角版本徽章:10 秒後淡出(它是 fixed,會蓋住按鈕的字)。
      ⚠ 內容從 src/version.js 來,不在這裡寫死版號 —— 寫死的那份一定會漂。 */
@@ -260,6 +281,8 @@ function App() {
   const editingRef = useRef(false);
   const setEditTool = (t) => { editToolRef.current = t; setEditToolState(t); };
   const setEditing = (v) => { editingRef.current = v; setEditingState(v); };
+  const petOn = petMode !== 'off' && !is2D && !editing;
+  useEffect(() => { document.body.classList.toggle('pet-on', petOn); }, [petOn]);
   const [editTurn, setEditTurn] = useState('w');        // 開始時誰先走
   const [editMe, setEditMe] = useState('w');            // 玩家執哪一方
   const [editMsg, setEditMsg] = useState({ text: '', bad: false });
@@ -360,6 +383,11 @@ function App() {
       get editing() { return editing; },
       get fen() { return toFen(engine.board, engine.turn); },
       get playerColor() { return playerColor; },
+      /* 🐾 動物對手(0928):Opponent 實例(probe / figs / react)、人聲 runtime、三段狀態 —— 驗收用,只讀 */
+      get pet() { return petRef.current; },
+      get petVoice() { return petVoice; },
+      get petMode() { return petMode; },
+      get petOn() { return petOn; },
       /* 🎥 相機的長寬比 vs 畫布真正的長寬比 —— 0910「重置視角把棋盤壓扁」那個 bug 的量法:
          病發時 camera.aspect 會停在轉向**之前**的舊值,和畫布現在的比例對不上,畫面就被拉扁。
          兩個都讀得到,測試才問得出「它們一不一致」(只看畫面截圖看不出是哪一邊錯)。 */
@@ -426,6 +454,28 @@ function App() {
   // 📡 完賽 beacon:一局分出結果(帥/將被吃、絕殺、三次重複犯規)= 一次 -done。打點函式住在 index.html;統計是配菜,失敗靜默。
   const psDone = () => { try { window.psDone && window.psDone(); } catch { /* noop */ } };
 
+  /* 🐾 動物對手的事件(跟 alert / psDone 同一個分岔,純觀感):
+     你走完 → 吃子・將牠的軍 gasp「哇」,不然 think(手托腮等電腦算);電腦走完 → 將你的軍 hop「將軍!」,不然 place;
+     分出結果 → 牠贏 win / 你贏 lose(每局一次閂鎖 petEndedRef;重新開局 / 悔棋歸零)。 */
+  const aiColor = () => (playerColorRef.current === 'w' ? 'b' : 'w');
+  const petFocus = (to) => {
+    const s = isMobile ? 1.0 : 1.2;
+    const [wx, wz] = gridToWorld(to[0], to[1]);
+    petFocusRef.current = new THREE.Vector3(wx * s, 0.3 * s, wz * s);
+  };
+  const petEnd = (winner) => {
+    const P = petRef.current;
+    if (!P || petEndedRef.current) return;
+    petEndedRef.current = true;
+    if (winner === aiColor()) P.react('win', 'win', 250); else P.react('lose', 'lose', 250);
+  };
+  const petReset = () => { petEndedRef.current = false; petFocusRef.current = null; if (petRef.current) petRef.current.cancel(); };
+  const getPetCtx = () => ({
+    focus: petFocusRef.current,
+    waiting: engine.turn === playerColorRef.current && !editingRef.current && !petEndedRef.current,
+    reduced: REDUCED_MOTION,
+  });
+
   /* 誰是玩家、誰是 AI,照 playerColorRef 講(自訂殘局可以執黑;以前寫死「紅=玩家、黑=AI」) */
   const sideLabel = (c) => (c === 'w' ? '紅方' : '黑方') + (c === playerColorRef.current ? ' (玩家)' : ' (AI)');
 
@@ -441,11 +491,13 @@ function App() {
     if (!redAlive) {
       setTimeout(() => alert(`紅方帥被吃，${sideLabel('b')}獲勝！遊戲結束。`), 100);
       psDone();
+      petEnd('b');
       return false;
     }
     if (!blackAlive) {
       setTimeout(() => alert(`黑方將被吃，${sideLabel('w')}獲勝！遊戲結束。`), 100);
       psDone();
+      petEnd('w');
       return false;
     }
 
@@ -453,6 +505,7 @@ function App() {
       const winner = sideLabel(engine.turn === 'w' ? 'b' : 'w');
       setTimeout(() => alert(`絕殺無解！${winner}獲勝！遊戲結束。`), 100);
       psDone();
+      petEnd(engine.turn === 'w' ? 'b' : 'w');
       return false;
     }
 
@@ -461,6 +514,7 @@ function App() {
       const winner = sideLabel(engine.turn);
       setTimeout(() => alert(`重複走法追追追達三次！${loser}犯規，${winner}獲勝！遊戲結束。`), 100);
       psDone();
+      petEnd(engine.turn);
       return false;
     }
 
@@ -508,9 +562,15 @@ function App() {
     const moves = engine.getLegalPieceMoves(from[0], from[1]);
     const isValid = moves.some(m => m[0] === to[0] && m[1] === to[1]);
     if (isValid) {
+      const victim = engine.board[to[1]][to[0]] !== '.';   // 🐾 吃子了嗎(move 之後就看不到了)
       engine.move(from, to);
       const continues = syncBoard();
       setSelectedPiece(null);
+      petFocus(to);
+      if (continues && petRef.current) {
+        if (victim || engine.isInCheck(engine.turn)) petRef.current.react('gasp', 'wow');   // 吃牠的子 / 將牠的軍 ⇒ 「哇」
+        else petRef.current.think();                                                        // 手托腮等電腦算
+      }
       // Trigger AI
       if (continues) {
         setTimeout(makeAIMove, 150);
@@ -570,7 +630,12 @@ function App() {
     const best = getBestMoveAlphaBeta(engine, difficulty, customGameRef.current ? 'none' : openingStyle);
     if (best) {
       engine.move(best.from, best.to);
-      syncBoard();
+      const continues = syncBoard();
+      petFocus(best.to);
+      if (continues && petRef.current) {
+        if (engine.isInCheck(engine.turn)) petRef.current.react('hop', 'check');   // 🐾 將你的軍 ⇒ 跳起來喊「將軍!」
+        else petRef.current.react('place', null);
+      }
     } else {
       alert('AI has no moves left! Game Over.');
     }
@@ -582,6 +647,7 @@ function App() {
     if (engine.turn !== playerColorRef.current) engine.undo(); // Undo AI move too
     syncBoard();
     setSelectedPiece(null);
+    petReset();
   };
 
   const saveGame = () => {
@@ -600,6 +666,7 @@ function App() {
       const parsed = JSON.parse(data);
       engine.loadPosition(parsed.board, parsed.turn);
       engine.history = Array.isArray(parsed.history) ? parsed.history : [];
+      petReset();
       syncBoard();
       alert('Game Loaded!');
     }
@@ -628,6 +695,7 @@ function App() {
     setPlayerColor('w'); playerColorRef.current = 'w';
     setEditing(false);
     setHint(null);
+    petReset();
     syncBoard();
     setSelectedPiece(null);
   };
@@ -674,6 +742,7 @@ function App() {
     setShareUrl('');
     setSelectedPiece(null);
     setHint(null);
+    petReset();
     setBoardState(engine.board.map((row) => [...row]));
     if (engine.turn !== me) setTimeout(makeAIMove, 300);   // 先走的是電腦 ⇒ 它先走
   };
@@ -844,6 +913,15 @@ function App() {
                   <option value="none">純搜尋 (Pure Search)</option>
                 </select>
               </label>
+              {/* 🐾 對手動物三段(0928):對面坐一隻會眨眼、會想棋、會說話的小動物;標籤帶牠的臉,孩子知道「輸給的是牠」。純觀感,不影響棋力。 */}
+              <label style={{ display: 'block', marginTop: '10px' }} id="petLabel">
+                🐾 對手{petOn ? `:${ANIMALS[petKind].emoji} ${ANIMALS[petKind].name}` : ''}:
+                <select id="petSelect" value={petMode} onChange={(e) => setPetMode(e.target.value)} aria-label="對手動物" style={{ marginTop: '5px', display: 'block', width: '100%' }}>
+                  <option value="voice">坐對面,會說話</option>
+                  <option value="mute">坐對面,不出聲</option>
+                  <option value="off">關</option>
+                </select>
+              </label>
             </div>
             {/* 🏷 版本與改版簡歷(艦隊鐵則⑦)。預設收合 —— 攤開會把下面的鈕擠出畫面
                  (撞球 0907 實錄:1202 字的簡歷裸放,選單直接被推出第一屏)。
@@ -904,7 +982,7 @@ function App() {
             R3F 的 Canvas 填滿這個 div,尺寸一變 <FitCamera> 就重算 —— 不必自己聽 resize。 */}
       <div className="stage" id="stage" style={{ top: isMobile ? overlayH : 0 }}>
       <Canvas shadows camera={{ position: [0, 8, 8], fov: isMobile ? 55 : 45 }}>
-        <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} refitRef={refitRef} />
+        <FitCamera is2D={is2D} scale={isMobile ? 1.0 : 1.2} controlsRef={controlsRef} fitRef={fitRef} refitRef={refitRef} extraRef={petExtraRef} />
         <color attach="background" args={['#2c3e50']} />
         <ambientLight intensity={0.5} />
         <directionalLight
@@ -953,6 +1031,9 @@ function App() {
             </>
           )}
         </group>
+        {/* 🐾 動物對手:掛在 scene(世界座標,不進上面那個 scale group);誰坐 / 收起由 props 決定,反應由 petRef 進去 */}
+        <PetOpponent petRef={petRef} controlsRef={controlsRef} refitRef={refitRef} scale={isMobile ? 1.0 : 1.2}
+          kind={petKind} mode={petMode} hidden={is2D || editing} voice={petVoice} getCtx={getPetCtx} />
         {/* ⚠⚠ minPolarAngle 會把 fitCamera 設的俯角**夾住**(極角 = 90° − 俯角)。
               2026-09-10 實錘:這裡原本是 Math.PI/6(30° 極角 = 俯角上限 60°),
               而 fitCamera 設的是 75° ⇒ 實際渲染出來量到 60.0°,使用者看到的是被夾過的角度,
