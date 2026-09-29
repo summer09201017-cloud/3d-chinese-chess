@@ -9,11 +9,12 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node test/ai.mjs && node test/version.mjs && node test/legality.mjs && node test/fit.mjs && node test/position.mjs",
+    "test": "node test/ai.mjs && node test/version.mjs && node test/legality.mjs && node test/fit.mjs && node test/position.mjs && node test/dice.mjs",
     "check": "node scripts/browser-check.mjs",
     "check:mobile": "node scripts/check-mobile-ui.mjs",
     "serve": "node scripts/serve-dist.mjs",
-    "deploy": "node scripts/deploy-all.mjs"
+    "deploy": "node scripts/deploy-all.mjs",
+    "smoke:dice": "node scripts/smoke-dice.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

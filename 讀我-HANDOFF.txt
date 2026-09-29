@@ -1,11 +1,28 @@
 ============================================================
 3D 中國象棋(3d-chinese-chess)— 交接說明(讀我-HANDOFF.txt)
-更新:2026-09-28(HFP 機・Fable 5.1・0928-3D動物對手-象棋家族-家裡 場)🐾 動物對手坐到你對面(v18;skill animal-opponent-kit 第七個活例,R3F 接法)
+更新:2026-09-30(HFP 機・Opus 5.5・0930-象棋擲骰-家裡 場)🎲 可執黑 + 擲骰 / 擲硬幣決定先後(v19;skill dice-coin-toss 骰6)
+// 原 更新:2026-09-28(HFP 機・Fable 5.1・0928-3D動物對手-象棋家族-家裡 場)🐾 動物對手坐到你對面(v18;skill animal-opponent-kit 第七個活例,R3F 接法)
 // 原 更新:2026-09-20(agape250 機・Fable 5.1・0920-3d棋類旋轉 場)🎥 視角工具列統一:預設三段 + 滑桿 + 換邊 + 重置(v17;src/view-kit.js 是 board3d-kit 共用資產的複本)
 // 原 更新:2026-09-13 下午(HFP 機・Fable 5.1・0913-take-over 場)🎥 俯角改 70°(使用者更正:早上「朝玩家轉 5 度」被我讀反;v16)+ 🧩 自訂殘局 + 📐 注視投影中心、行距 0.92、舞台從選單列底下開始(v15)
 // 原 更新:2026-09-13(HFP 機・Fable 5.1・0913-take-over 場)🧩 自訂殘局 + 📐 橫式棋盤:朝玩家轉 5°、注視投影中心、行距 0.92、舞台從選單列底下開始(v15)
 // 原 更新:2026-09-10(agape250 機・Sonnet 5)🐛 修好黑方沒反應/棋盤憑空多子(v14,三站已部署:指紋 index-Urjh1ODy.js)
 ============================================================
+
+★★★★★ 2026-09-30(HFP 機・Opus 5.5・0930-象棋擲骰-家裡 場)🎲 可執黑 + 擲骰決定先後(v19)★★★★★
+  由來:0929 使用者拍板全艦隊鋪 skill dice-coin-toss;大表骰6「其他象棋版」= 本 repo(三站同源)+ xiangqi-arena(另一 repo,同場 v24 上線)。
+  實查:一般對局**玩家寫死執紅**(restartGame 寫死 w),只有自訂殘局能執黑 ⇒ M 級(引擎本來就支援電腦先走,補的是一般對局)。
+  改動(src/App.jsx):
+    ① 面板「我執 (Side)」#sideSelect:🔴 紅 / ⚫ 黑 / 🎲 擲骰 / 🪙 擲硬幣;**只改選擇,按「重新開局」才生效**(旁邊小字提示)。
+       sideChoice(選單)與 playerColor(這一局)分開;選擲骰 ⇒ restartGame 先擺盤再 await tossForOrder,每按一次重擲;大的 / 正面 = 你執紅。
+    ② 局號 gameTokenRef + scheduleAI(ms):電腦那手一律經它排(回來時局已換就丟);newToken() 換局時 +1 並收掉沒關的 .dt-ov
+       (浮層蓋得住滑鼠、蓋不住 Tab+Enter 按到後面的重新開局 ⇒ 不收會疊兩層、舊的永遠蓋住棋盤)。restart / 讀檔 / 進出編輯器 / 殘局開打都換局號。
+    ③ 🐛 悔到開局卡住(執黑只有電腦那手可退 ⇒ 退完輪到電腦沒人叫)⇒ undo 尾巴補 scheduleAI。進編輯器前輪到電腦 ⇒ 離開時補叫。
+    ④ 存檔多 me(舊檔沒有 ⇒ 讀回當執紅);讀檔後輪到電腦就叫它。擲骰中:棋盤 / 提示 / 悔棋都不收(tossingRef)。
+    ⑤ src/dice-toss.js = skill 正本複本(不在這裡改);__anchess 多 sideChoice / tossing / setDiceRng / topFace(冒煙用)。
+  驗:npm test 全綠 + test/dice.mjs 5 項;npm run smoke:dice 16/0(要先 build + serve;突變:拿掉悔棋叫電腦 / 收舊浮層 / 提示旗標各自會紅;
+      scheduleAI 局號單獨拿掉仍綠 —— makeAIMove 開頭本來就再確認輪到誰,兩道重疊);browser-check 39/0、check:mobile 50/0。
+  ⚠ 已知沒做:執黑時相機不會轉到黑方那邊(自訂殘局執黑本來就這樣;有 🔃 換邊)。
+  ⚠ 冒煙要等 canvasAspect 出現再點(__anchess 一出現就點,3D 場景還在載入,前幾條會假紅)。
 
 ★★★★★ 2026-09-28(HFP 機・Fable 5.1・0928-3D動物對手-象棋家族-家裡 場)🐾 動物對手坐到你對面(v18)★★★★★
   由來:0927 使用者看了 3D 麻將的三隻動物說「超級可愛」⇒ 固化 skill animal-opponent-kit,0928 掃象棋家族六站;本站是 R3F 站,接法跟 vanilla 站不同。

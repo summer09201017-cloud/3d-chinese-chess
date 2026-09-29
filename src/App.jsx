@@ -113,6 +113,7 @@ import { mountViewKit, orbitAdapter } from './view-kit.js';
 import { PetOpponent } from './PetOpponent.jsx';
 import { ANIMALS, animalFor, loadPetMode, savePetMode } from './opponent.js';
 import { createVoice } from './voice.js';
+import { tossForOrder, topFace } from './dice-toss.js';   // 🎲 skill dice-coin-toss 正本的複本(站內不改)
 
 /* 🎥 3D 時 OrbitControls 的極角下限(極角 = 90° − 俯角)。
    2026-09-20:視角工具列多了「正俯視 88°」預設與 20~88° 的俯視角度滑桿 ⇒ 原本的 π/36(5°,俯角最多 85°)
@@ -215,6 +216,9 @@ function App() {
   const [difficulty, setDifficulty] = useState(2); // Depth 2 is fast, depth 3 is medium
   const [openingStyle, setOpeningStyle] = useState('auto'); // Opening book selection
   const [playerColor, setPlayerColor] = useState('w');
+  /* 🎲 sideChoice = 選單上選的(w / b / dice / coin),按「重新開局」才生效;playerColor = 這一局真的執哪色。
+     ⚠ 'dice' / 'coin' 絕不流進引擎 —— restartGame 先解成 w / b。 */
+  const [sideChoice, setSideChoice] = useState('w');
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [is2D, setIs2D] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -296,6 +300,11 @@ function App() {
        排 AI 走,閉包裡還是舊的顏色,AI 會以為輪到玩家而不走。ref 永遠是最新值。 */
   const playerColorRef = useRef('w');
   const customGameRef = useRef(false);
+  /* 🎲 局號:電腦那手是 setTimeout 排的,回來時局已換(重新開局 / 讀檔 / 殘局)⇒ 丟掉;擲骰回來時局已換 ⇒ 作廢。
+     tossingRef:擲骰浮層開著時棋盤、提示、悔棋都不收。 */
+  const gameTokenRef = useRef(0);
+  const tossingRef = useRef(false);
+  const diceRngRef = useRef(null);   // 測試鉤子:冒煙指定點數(window.__anchess.setDiceRng)
   useEffect(() => { playerColorRef.current = playerColor; }, [playerColor]);
 
   useEffect(() => {
@@ -383,6 +392,11 @@ function App() {
       get editing() { return editing; },
       get fen() { return toFen(engine.board, engine.turn); },
       get playerColor() { return playerColor; },
+      /* 🎲 擲骰(0930):選單值 / 擲骰中 / 指定點數(冒煙用;⚠ 不能換 Math.random,動物每幀都在用) */
+      get sideChoice() { return sideChoice; },
+      get tossing() { return tossingRef.current; },
+      setDiceRng: (fn) => { diceRngRef.current = fn; },
+      topFace,   // 判定 = 畫面:冒煙拿它對 dataset.v
       /* 🐾 動物對手(0928):Opponent 實例(probe / figs / react)、人聲 runtime、三段狀態 —— 驗收用,只讀 */
       get pet() { return petRef.current; },
       get petVoice() { return petVoice; },
@@ -534,6 +548,7 @@ function App() {
 
   const handlePieceClick = (x, y) => {
     if (editingRef.current) { editPlace(x, y); return; }
+    if (tossingRef.current) return;   // 🎲 擲骰中
     const p = engine.board[y][x];
     const isRed = p >= 'A' && p <= 'Z';
     const pColor = isRed ? 'w' : 'b';
@@ -553,6 +568,7 @@ function App() {
     const scale = isMobile ? 1.0 : 1.2;
     const [nx, nz] = worldToGrid(evt.point.x, evt.point.z, scale);
     if (editingRef.current) { editPlace(nx, nz); return; }
+    if (tossingRef.current) return;   // 🎲 擲骰中
     if (!selectedPieceRef.current) return;
     tryMove(selectedPieceRef.current, [nx, nz]);
   };
@@ -573,7 +589,7 @@ function App() {
       }
       // Trigger AI
       if (continues) {
-        setTimeout(makeAIMove, 150);
+        scheduleAI(150);
       }
     } else {
       setSelectedPiece(null);
@@ -592,7 +608,7 @@ function App() {
      ★ 速度反而更快(本機 test/ai.mjs:30 個隨機中局平均 57ms、最慢 130ms),
        因為 MVV-LVA 排序讓 alpha-beta 剪得動;仍然保留 setTimeout 讓畫面先畫「想一手…」。 */
   const showHint = () => {
-    if (hintThinking) return;
+    if (hintThinking || tossingRef.current) return;
     if (engine.turn !== playerColor) return;      // 不是你的回合
 
     if (hint && hint.hash === engine.zobristHash) return;   // 同局面 ⇒ 同一手,不重算
@@ -623,7 +639,21 @@ function App() {
     }, 30);
   };
 
+  /* 🎲 排電腦那一手:帶著局號,回來時局已換就丟掉(你執黑時電腦一開局就排,馬上按重新開局 ⇒ 舊那手不能走進新局) */
+  const scheduleAI = (ms) => {
+    const token = gameTokenRef.current;
+    setTimeout(() => { if (token === gameTokenRef.current) makeAIMove(); }, ms);
+  };
+  /* 🎲 換局:局號 +1,上一局沒關的擲骰浮層一起收掉
+     (浮層蓋得住滑鼠、蓋不住 Tab + Enter 按到後面的「重新開局」⇒ 不收的話舊浮層永遠蓋著棋盤) */
+  const newToken = () => {
+    tossingRef.current = false;
+    document.querySelectorAll('.dt-ov').forEach((ov) => ov.remove());
+    return ++gameTokenRef.current;
+  };
+
   const makeAIMove = () => {
+    if (editingRef.current) return;   // 排下去之後進了殘局編輯器 ⇒ 不要在編輯中的盤面上走
     if (engine.turn === playerColorRef.current) return;
     /* 🧩 自訂殘局不用開局書:書裡的手是「開局盤面」的手,殘局裡就算剛好合法也只是瞎走一步。
          (getBestMoveAlphaBeta 只看 history.length ≤ 3 判「開局」,殘局一開始 history 就是空的。) */
@@ -642,12 +672,14 @@ function App() {
   };
 
   const undo = () => {
-    if (editing) return;
+    if (editing || tossingRef.current) return;
     engine.undo();
     if (engine.turn !== playerColorRef.current) engine.undo(); // Undo AI move too
     syncBoard();
     setSelectedPiece(null);
     petReset();
+    /* 🎲 你執黑、悔到開局(只有電腦那一手可退)⇒ 退完輪到電腦卻沒人叫它,整盤卡住 */
+    if (engine.turn !== playerColorRef.current) scheduleAI(300);
   };
 
   const saveGame = () => {
@@ -655,7 +687,8 @@ function App() {
     localStorage.setItem('xiangqiSave', JSON.stringify({
       board: engine.board,
       turn: engine.turn,
-      history: engine.history
+      history: engine.history,
+      me: playerColorRef.current,   // 🎲 v19 起可執黑;舊檔沒有 ⇒ 讀回來當執紅
     }));
     alert('Game Saved!');
   };
@@ -664,11 +697,16 @@ function App() {
     const data = localStorage.getItem('xiangqiSave');
     if (data) {
       const parsed = JSON.parse(data);
+      newToken();
       engine.loadPosition(parsed.board, parsed.turn);
       engine.history = Array.isArray(parsed.history) ? parsed.history : [];
+      const me = parsed.me === 'b' ? 'b' : 'w';
+      setPlayerColor(me); playerColorRef.current = me;
       petReset();
       syncBoard();
+      setSelectedPiece(null);
       alert('Game Loaded!');
+      if (engine.turn !== me) scheduleAI(300);
     }
   };
 
@@ -689,21 +727,47 @@ function App() {
     }
   };
 
-  const restartGame = () => {
+  const restartGame = async () => {
+    const token = newToken();
     engine.loadPosition(INITIAL_BOARD, 'w');
     customGameRef.current = false;
-    setPlayerColor('w'); playerColorRef.current = 'w';
+    let me = sideChoice === 'b' ? 'b' : 'w';
+    setPlayerColor(me); playerColorRef.current = me;
     setEditing(false);
     setHint(null);
     petReset();
     syncBoard();
     setSelectedPiece(null);
+    /* 🎲 選了擲骰 / 擲硬幣 ⇒ 每按一次重新開局就重擲;盤先擺好,浮層蓋在上面。大的(硬幣正面 = 你)執紅先走。 */
+    if (sideChoice === 'dice' || sideChoice === 'coin') {
+      tossingRef.current = true;
+      const a = ANIMALS[animalFor(difficulty)];   // 照難度拿「這一局要坐的那隻」
+      let first = 0;
+      try {
+        const r = await tossForOrder({
+          players: ['你', a ? `${a.emoji} ${a.name}` : '電腦'],
+          mode: sideChoice,
+          rng: diceRngRef.current || undefined,
+          title: sideChoice === 'coin' ? '🪙 擲硬幣決定誰先走' : '🎲 擲骰決定誰先走',
+          firstText: (name) => `${name} 先!執 🔴 紅方`,
+        });
+        first = r.first;
+      } catch (err) {
+        console.error('[dice] toss failed:', err);   // 擲不了就照舊你執紅
+      }
+      if (token !== gameTokenRef.current) return;   // 擲的時候局已經換了 ⇒ 這次作廢
+      tossingRef.current = false;
+      me = first === 0 ? 'w' : 'b';
+      setPlayerColor(me); playerColorRef.current = me;
+    }
+    if (me === 'b') scheduleAI(300);   // 你執黑 ⇒ 電腦先走
   };
 
   /* ══════════ 🧩 自訂殘局編輯器 ══════════ */
   const say = (text, bad = false) => setEditMsg({ text, bad });
 
   const startEditor = () => {
+    newToken();   // 🎲 電腦還排著一手 / 還在擲 ⇒ 作廢(離開編輯時會再叫它)
     editBackupRef.current = {
       board: engine.board.map((row) => [...row]), turn: engine.turn, history: [...engine.history],
       me: playerColorRef.current, custom: customGameRef.current,
@@ -728,6 +792,7 @@ function App() {
     }
     setEditing(false);
     setShareUrl('');
+    if (b && engine.turn !== b.me) scheduleAI(300);   // 進編輯前輪到電腦(它那手被作廢了)⇒ 補叫
   };
 
   const editClear = () => { engine.board = EMPTY_BOARD(); setBoardState(engine.board.map((r) => [...r])); say('盤面清空了。'); };
@@ -735,6 +800,7 @@ function App() {
 
   /** 從一個局面開打(編輯器「開始」/ 載入 / 分享連結都走這裡) */
   const beginCustomGame = (board, turn, me) => {
+    newToken();
     engine.loadPosition(board, turn);
     customGameRef.current = true;
     setPlayerColor(me); playerColorRef.current = me;
@@ -744,7 +810,7 @@ function App() {
     setHint(null);
     petReset();
     setBoardState(engine.board.map((row) => [...row]));
-    if (engine.turn !== me) setTimeout(makeAIMove, 300);   // 先走的是電腦 ⇒ 它先走
+    if (engine.turn !== me) scheduleAI(300);   // 先走的是電腦 ⇒ 它先走
   };
 
   const startFromEditor = () => {
@@ -902,6 +968,21 @@ function App() {
                   <option value={9}>9 - 宗師 (Grandmaster)</option>
                   <option value={10}>10 - 棋聖 (Legendary)</option>
                 </select>
+              </label>
+              {/* 🎲 誰先走(0930,skill dice-coin-toss):只改選擇,按「重新開局」才生效 ——
+                   試過選了就直接開局,同一個選單有時跳浮層有時不跳,反而難懂(chess5 / 3D-Xiangqi 同一條) */}
+              <label style={{ display: 'block', marginTop: '10px' }}>我執 (Side):
+                <select id="sideSelect" value={sideChoice} onChange={(e) => setSideChoice(e.target.value)} aria-label="我執哪一方" style={{ marginTop: '5px', display: 'block', width: '100%' }}>
+                  <option value="w">🔴 紅方(你先走)</option>
+                  <option value="b">⚫ 黑方(電腦先走)</option>
+                  <option value="dice">🎲 擲骰決定</option>
+                  <option value="coin">🪙 擲硬幣決定</option>
+                </select>
+                {(sideChoice === 'dice' || sideChoice === 'coin' || sideChoice !== playerColor) && (
+                  <small id="sideHint" style={{ display: 'block', opacity: 0.8 }}>
+                    {sideChoice === 'dice' || sideChoice === 'coin' ? '每按一次「重新開局」重擲' : '按「重新開局」生效'}
+                  </small>
+                )}
               </label>
               <label style={{ display: 'block', marginTop: '10px' }}>AI 棋譜 (Opening):
                 <select value={openingStyle} onChange={(e) => setOpeningStyle(e.target.value)} style={{ marginTop: '5px', display: 'block', width: '100%' }}>
